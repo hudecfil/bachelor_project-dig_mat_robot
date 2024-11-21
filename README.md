@@ -20,3 +20,10 @@ The updated version is designed for press-fitting the magnets. Therefore the hol
 
 ![Magnetic lattice MK1](images/IMG_3946.JPG)
 ![Magnetic voxel MK1](images/IMG_3981.JPG)
+
+## Design of the robot
+
+### Gripper anchor
+When robot gripper lands on the voxel, the robot has to attach to it. For this purpose is the gripper equipped with servo actuated anchor.
+The anchor is cross-shaped to pass through the voxel lattice, when it's 45° rotated. Servo then turns the anchor back to its base position,
+and locks the gripper in place.
