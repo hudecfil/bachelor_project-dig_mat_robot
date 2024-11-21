@@ -17,3 +17,6 @@ force of 290 g, which seemed sufficient. First idea of fixing the magnets in pla
 ### Magnetic voxel MK1
 
 The updated version is designed for press-fitting the magnets. Therefore the holes are a bit smaller with 0.1 mm offset.
+
+![Magnetic lattice MK1](images/IMG_3946.JPG)
+![Magnetic voxel MK1](images/IMG_3981.JPG)
