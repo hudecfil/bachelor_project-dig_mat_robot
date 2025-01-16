@@ -9,6 +9,8 @@
 
 import sys
 import os
+import serial
+import time
 
 if os.name == 'nt':
     import msvcrt
@@ -32,13 +34,12 @@ from STservo_sdk import *                   # Uses STServo SDK library
 # Default setting
 STS_ID                  = 1                 # STServo ID : 1
 BAUDRATE                = 1000000           # STServo default baudrate : 1000000
-DEVICENAME              = 'COM11'    # Check which port is being used on your controller
-                                            # ex) Windows: "COM1"   Linux: "/dev/ttyUSB0" Mac: "/dev/tty.usbserial-*"
+DEVICENAME              = '/dev/serial0'    # Use /dev/serial0 for GPIO serial communication on Raspberry Pi
 
 # Initialize PortHandler instance
 # Set the port path
 # Get methods and members of PortHandlerLinux or PortHandlerWindows
-portHandler = PortHandler(DEVICENAME)
+portHandler = serial.Serial(DEVICENAME, BAUDRATE, timeout=1)
 
 # Initialize PacketHandler instance
 # Get methods and members of Protocol
@@ -51,7 +52,6 @@ else:
     print("Press any key to terminate...")
     getch()
     quit()
-
 
 # Set port baudrate
 if portHandler.setBaudRate(BAUDRATE):
