@@ -26,4 +26,21 @@ The updated version is designed for press-fitting the magnets. Therefore the hol
 ### Gripper anchor
 When robot gripper lands on the voxel, the robot has to attach to it. For this purpose is the gripper equipped with servo actuated anchor.
 The anchor is cross-shaped to pass through the voxel lattice, when it's 45° rotated. Servo then turns the anchor back to its base position,
-and locks the gripper in place.
+and locks the gripper in place. I designed prototype which you can see on the picture below [ADD IMAGE]. I made the arms of anchor thicker,
+to be more robust, when the robot leans with all its weight to it. I also added round corners to the endings of anchor arms, so the anchor
+can lock in place smoothly, when its not positioned perfectly. Another problem that I found out was that the anchor is too far from the voxel
+lattice, and that the gripper has wobble when locked on the voxel. So I made multiple spacers that changes distance from motor mount, and tested them.
+I got best result with spacer that made the anchor to be without any tolerance.
+
+### Gripper
+The design of the gripper was quite challenging. [...COMPLETE THIS PARAGRAPH]
+
+## Bring electronics to life
+
+### Raspberry Pi Zero 2W
+In future I am planning to run ROS2 on the controller, so I needed more capable and powerful controller board, than basic boards like Arduino or ESP.
+The ROS2 doesn't support default Raspberry Pi OS, so I needed to run one of the newest versions of Ubuntu Server. I tried out the newest
+Ubuntu Server 24.10, then the 24.04.1 LTS but non of them booted, only the Raspberry Pi OS did. Finally older version 22.04.5 LTS (Jammy) booted up,
+and I could get into proper work. This version of Ubuntu is supported by Humble Hawksbill ROS2 distribution, which I probably will use.
+I connected to RasPi using SSH and cloned my git repository with Waveshare ST series servos Python library. For coding I am using VSCode remote development extension, which installs
+VSCode Server version on RasPi. Then I am able to edit code on remote RasPi conveniently from my laptop.
