@@ -39,10 +39,10 @@ DEVICENAME                  = "/dev/ttyS0"     # Check which port is being used 
 
 STS_MINIMUM_POSITION_VALUE  = 0             # SCServo will rotate between this value
 STS_MAXIMUM_POSITION_VALUE  = 4095
-STS_MOVING_SPEED            = 0          # SCServo moving speed: 2400
+STS_MOVING_SPEED            = 2400          # SCServo moving speed: 2400
 STS_MOVING_ACC              = 50            # SCServo moving acc
 
-NUM_SERVOS = 6
+NUM_SERVOS = 5
 
 index = 0
 sts_goal_position = [STS_MINIMUM_POSITION_VALUE, STS_MAXIMUM_POSITION_VALUE]         # Goal position
@@ -82,7 +82,7 @@ while 1:
     if getch() == chr(0x1b):
         break
 
-    for sts_id in range(1, NUM_SERVOS):
+    for sts_id in range(0, NUM_SERVOS):
         # Add SCServo#1~10 goal position\moving speed\moving accc value to the Syncwrite parameter storage
         sts_addparam_result = packetHandler.SyncWritePosEx(sts_id, sts_goal_position[index], STS_MOVING_SPEED, STS_MOVING_ACC)
         if sts_addparam_result != True:
@@ -98,7 +98,7 @@ while 1:
     time.sleep(0.002) #wait for servo status moving=1
     while 1:
         # Add parameter storage for STServo#1~10 present position value
-        for sts_id in range(1, NUM_SERVOS):
+        for sts_id in range(0, NUM_SERVOS):
             sts_addparam_result = groupSyncRead.addParam(scs_id)
             if sts_addparam_result != True:
                 print("[ID:%03d] groupSyncRead addparam failed" % sts_id)
@@ -107,8 +107,8 @@ while 1:
         if sts_comm_result != COMM_SUCCESS:
             print("%s" % packetHandler.getTxRxResult(sts_comm_result))
 
-        sts_last_moving = 0;
-        for sts_id in range(1, NUM_SERVOS):
+        sts_last_moving = 0
+        for sts_id in range(0, NUM_SERVOS):
             # Check if groupsyncread data of STServo#1~10 is available
             sts_data_result, sts_error = groupSyncRead.isAvailable(sts_id, STS_PRESENT_POSITION_L, NUM_SERVOS)
             if sts_data_result == True:
@@ -119,7 +119,7 @@ while 1:
                 # print(scs_present_moving)
                 print("[ID:%03d] PresPos:%d PresSpd:%d" % (sts_id, sts_present_position, packetHandler.sts_tohost(sts_present_speed, 15)))
                 if sts_present_moving==1:
-                    sts_last_moving = 1;
+                    sts_last_moving = 1
             else:
                 print("[ID:%03d] groupSyncRead getdata failed" % sts_id)
                 continue

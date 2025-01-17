@@ -94,8 +94,8 @@ class PortHandler(object):
         self.ser = serial.Serial(
             port=self.port_name,
             baudrate=self.baudrate,
-            # parity = serial.PARITY_ODD,
-            # stopbits = serial.STOPBITS_TWO,
+            #parity = serial.PARITY_ODD,
+            #stopbits = serial.STOPBITS_TWO,
             bytesize=serial.EIGHTBITS,
             timeout=0
         )
