@@ -9,6 +9,7 @@
 
 import sys
 import os
+import serial
 
 if os.name == 'nt':
     import msvcrt
@@ -42,6 +43,8 @@ STS_MOVING_ACC              = 50          # STServo moving acc
 
 index = 0
 sts_goal_position = [STS_MINIMUM_POSITION_VALUE, STS_MAXIMUM_POSITION_VALUE]         # Goal position
+
+ser = serial.Serial('/dev/ttyS0', baudrate=1000000, timeout=1)
 
 # Initialize PortHandler instance
 # Set the port path
