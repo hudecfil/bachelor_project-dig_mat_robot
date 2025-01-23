@@ -41,7 +41,7 @@ portHandler = PortHandler(DEVICENAME)
 
 # Initialize PacketHandler instance
 # Get methods and members of Protocol
-packetHandler = sts(portHandler) # ST / SC = sts(portHandler) / scscl(portHandler)
+packetHandler = scscl(portHandler) # ST / SC = sts(portHandler) / scscl(portHandler)
 # Open port
 if portHandler.openPort():
     print("Succeeded to open the port")

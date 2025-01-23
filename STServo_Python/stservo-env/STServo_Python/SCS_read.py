@@ -35,13 +35,6 @@ STS_ID                      = 1                 # STServo ID : 1
 BAUDRATE                    = 1000000           # STServo default baudrate : 1000000
 DEVICENAME                  = "/dev/ttyAMA0"    # Check which port is being used on your controller
                                                 # ex) Windows: "COM1"   Linux: "/dev/ttyUSB0" Mac: "/dev/tty.usbserial-*"
-STS_MINIMUM_POSITION_VALUE  = 0           # STServo will rotate between this value
-STS_MAXIMUM_POSITION_VALUE  = 4095        # ST/SC09 = 1023/4095 max position
-STS_MOVING_SPEED            = 2400        # ST/SC09 = 3073/3073? max moving speed
-STS_MOVING_ACC              = 50          # STServo moving acc
-
-index = 0
-sts_goal_position = [STS_MINIMUM_POSITION_VALUE, STS_MAXIMUM_POSITION_VALUE]         # Goal position
 
 # Initialize PortHandler instance
 # Set the port path
@@ -50,7 +43,7 @@ portHandler = PortHandler(DEVICENAME)
 
 # Initialize PacketHandler instance
 # Get methods and members of Protocol
-packetHandler = sts(portHandler)
+packetHandler = scscl(portHandler)
     
 # Open port
 if portHandler.openPort():
@@ -74,37 +67,14 @@ while 1:
     print("Press any key to continue! (or press ESC to quit!)")
     if getch() == chr(0x1b):
         break
-
-    # Write STServo goal position/moving speed/moving acc
-    sts_comm_result, sts_error = packetHandler.WritePosEx(STS_ID, sts_goal_position[index], STS_MOVING_SPEED, STS_MOVING_ACC)
+    # Read STServo present position
+    sts_present_position, sts_present_speed, sts_comm_result, sts_error = packetHandler.ReadPosSpeed(STS_ID)
     if sts_comm_result != COMM_SUCCESS:
-        print("%s" % packetHandler.getTxRxResult(sts_comm_result))
-    elif sts_error != 0:
-        print("%s" % packetHandler.getRxPacketError(sts_error))
-
-    while 1:
-        # Read STServo present position
-        sts_present_position, sts_present_speed, sts_comm_result, sts_error = packetHandler.ReadPosSpeed(STS_ID)
-        if sts_comm_result != COMM_SUCCESS:
-            print(packetHandler.getTxRxResult(sts_comm_result))
-        else:
-            print("[ID:%03d] GoalPos:%d PresPos:%d PresSpd:%d" % (STS_ID, sts_goal_position[index], sts_present_position, sts_present_speed))
-        if sts_error != 0:
-            print(packetHandler.getRxPacketError(sts_error))
-
-        # Read STServo moving status
-        moving, sts_comm_result, sts_error = packetHandler.ReadMoving(STS_ID)
-        if sts_comm_result != COMM_SUCCESS:
-            print(packetHandler.getTxRxResult(sts_comm_result))
-
-        if moving==0:
-            break
-
-    # Change goal position
-    if index == 0:
-        index = 1
+        print(packetHandler.getTxRxResult(sts_comm_result))
     else:
-        index = 0
+        print("[ID:%03d] PresPos:%d PresSpd:%d" % (STS_ID, sts_present_position, sts_present_speed))
+    if sts_error != 0:
+        print(packetHandler.getRxPacketError(sts_error))
 
 # Close port
 portHandler.closePort()

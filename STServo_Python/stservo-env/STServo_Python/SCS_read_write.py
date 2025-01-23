@@ -36,9 +36,10 @@ BAUDRATE                    = 1000000           # STServo default baudrate : 100
 DEVICENAME                  = "/dev/ttyAMA0"    # Check which port is being used on your controller
                                                 # ex) Windows: "COM1"   Linux: "/dev/ttyUSB0" Mac: "/dev/tty.usbserial-*"
 STS_MINIMUM_POSITION_VALUE  = 0           # STServo will rotate between this value
-STS_MAXIMUM_POSITION_VALUE  = 4095        # ST/SC09 = 1023/4095 max position
-STS_MOVING_SPEED            = 2400        # ST/SC09 = 3073/3073? max moving speed
+STS_MAXIMUM_POSITION_VALUE  = 165        # ST/SC09 = 1023/4095 max position
+STS_MOVING_SPEED            = 500        # ST/SC09 = 3073/3073? max moving speed
 STS_MOVING_ACC              = 50          # STServo moving acc
+SCS_MOVING_TIME             = 0
 
 index = 0
 sts_goal_position = [STS_MINIMUM_POSITION_VALUE, STS_MAXIMUM_POSITION_VALUE]         # Goal position
@@ -50,7 +51,7 @@ portHandler = PortHandler(DEVICENAME)
 
 # Initialize PacketHandler instance
 # Get methods and members of Protocol
-packetHandler = sts(portHandler)
+packetHandler = scscl(portHandler)
     
 # Open port
 if portHandler.openPort():
@@ -76,7 +77,7 @@ while 1:
         break
 
     # Write STServo goal position/moving speed/moving acc
-    sts_comm_result, sts_error = packetHandler.WritePosEx(STS_ID, sts_goal_position[index], STS_MOVING_SPEED, STS_MOVING_ACC)
+    sts_comm_result, sts_error = packetHandler.WritePos(STS_ID, sts_goal_position[index], SCS_MOVING_TIME, STS_MOVING_SPEED)
     if sts_comm_result != COMM_SUCCESS:
         print("%s" % packetHandler.getTxRxResult(sts_comm_result))
     elif sts_error != 0:
