@@ -59,7 +59,7 @@ STS_PRESENT_CURRENT_H = 70
 
 class sts(protocol_packet_handler):
     def __init__(self, portHandler):
-        protocol_packet_handler.__init__(self, portHandler, 0)
+        protocol_packet_handler.__init__(self, portHandler, 0) # ST/SC protocol_end = 0/1
         self.groupSyncWrite = GroupSyncWrite(self, STS_ACC, 7)
 
     def WritePosEx(self, sts_id, position, speed, acc):

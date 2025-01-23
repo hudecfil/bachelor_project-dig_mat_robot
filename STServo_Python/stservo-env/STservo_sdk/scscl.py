@@ -29,6 +29,10 @@ SCSCL_MAX_ANGLE_LIMIT_H = 12
 SCSCL_CW_DEAD = 26
 SCSCL_CCW_DEAD = 27
 
+SCSCL_P = 21 # Controller Proportional coefficient
+SCSCL_D = 22 # Controller Derivative coefficient
+SCSCL_I = 23 # Controller Integral coefficient
+
 #-------SRAM(读写)--------
 SCSCL_TORQUE_ENABLE = 40
 SCSCL_GOAL_POSITION_L = 42
@@ -58,7 +62,7 @@ class scscl(protocol_packet_handler):
         self.groupSyncWrite = GroupSyncWrite(self, SCSCL_GOAL_POSITION_L, 6)
 
     def WritePos(self, scs_id, position, time, speed):
-        txpacket = [self.scs_lobyte(position), self.scs_hibyte(position), self.scs_lobyte(time), self.scs_hibyte(time), self.scs_lobyte(speed), self.scs_hibyte(speed)]
+        txpacket = [self.sts_lobyte(position), self.sts_hibyte(position), self.sts_lobyte(time), self.sts_hibyte(time), self.sts_lobyte(speed), self.sts_hibyte(speed)]
         return self.writeTxRx(scs_id, SCSCL_GOAL_POSITION_L, len(txpacket), txpacket)
 
     def ReadPos(self, scs_id):
@@ -71,9 +75,9 @@ class scscl(protocol_packet_handler):
 
     def ReadPosSpeed(self, scs_id):
         scs_present_position_speed, scs_comm_result, scs_error = self.read4ByteTxRx(scs_id, SCSCL_PRESENT_POSITION_L)
-        scs_present_position = self.scs_loword(scs_present_position_speed)
-        scs_present_speed = self.scs_hiword(scs_present_position_speed)
-        return scs_present_position, self.scs_tohost(scs_present_speed, 15), scs_comm_result, scs_error
+        scs_present_position = self.sts_loword(scs_present_position_speed)
+        scs_present_speed = self.sts_hiword(scs_present_position_speed)
+        return scs_present_position, self.sts_tohost(scs_present_speed, 15), scs_comm_result, scs_error
 
     def ReadMoving(self, scs_id):
         moving, scs_comm_result, scs_error = self.read1ByteTxRx(scs_id, SCSCL_MOVING)
