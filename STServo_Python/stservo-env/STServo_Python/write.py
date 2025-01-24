@@ -34,17 +34,17 @@ from STservo_sdk import *                 # Uses STServo SDK library
 # Default setting
 STS_ID                      = 1                 # STServo ID : 1
 BAUDRATE                    = 1000000           # STServo default baudrate : 1000000
-DEVICENAME                  = "/dev/ttyS0"    # Check which port is being used on your controller
+DEVICENAME                  = "/dev/ttyAMA0"    # Check which port is being used on your controller
                                                 # ex) Windows: "COM1"   Linux: "/dev/ttyUSB0" Mac: "/dev/tty.usbserial-*"
 STS_MINIMUM_POSITION_VALUE  = 0           # STServo will rotate between this value
-STS_MAXIMUM_POSITION_VALUE  = 4095
-STS_MOVING_SPEED            = 2400        # STServo moving speed
+STS_MAXIMUM_POSITION_VALUE  = 1023
+STS_MOVING_SPEED            = 1500        # STServo moving speed
 STS_MOVING_ACC              = 50          # STServo moving acc
 
 index = 0
 sts_goal_position = [STS_MINIMUM_POSITION_VALUE, STS_MAXIMUM_POSITION_VALUE]         # Goal position
 
-ser = serial.Serial('/dev/ttyS0', baudrate=1000000, timeout=1)
+ser = serial.Serial(DEVICENAME, baudrate=1000000, timeout=1)
 
 # Initialize PortHandler instance
 # Set the port path

@@ -30,7 +30,7 @@ sys.path.append("..")
 from STservo_sdk import *                   # Uses STServo SDK library
 
 # Default setting
-STS_ID                  = 1                # STServo ID : 1
+STS_ID                  = 8                # STServo ID : 1
 BAUDRATE                = 1000000        # STServo default baudrate : 1000000
 DEVICENAME              = "/dev/ttyAMA0"    # Use /dev/serial0 for GPIO serial communication on Raspberry Pi
 

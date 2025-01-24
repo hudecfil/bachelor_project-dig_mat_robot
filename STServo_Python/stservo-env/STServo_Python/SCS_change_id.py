@@ -18,13 +18,12 @@ else:
         return ch
 
 sys.path.append("..")
-from STservo_sdk import *                   # Uses STServo SDK library
+from STservo_sdk import *                   # Uses STServo SDK library - scscl class
 
 # Default setting
-SCS_ID                  = 1                # STServo ID : 1
-SCS_I_current           = 15 
-SCS_I_changeto          = 0
-BAUDRATE                = 1000000        # STServo default baudrate : 1000000
+SCS_ID_current          = 1                # SC Servo ID : 1
+SCS_ID_changeto         = 8
+BAUDRATE                = 1000000        # SC Servo default baudrate : 1000000
 DEVICENAME              = "/dev/ttyAMA0"    # Use /dev/serial0 for GPIO serial communication on Raspberry Pi
 
 # Initialize PortHandler instance
@@ -53,25 +52,25 @@ else:
     getch()
     quit()
 
-#---------------------------Change servo I coefficient--------------------------
+#---------------------------Change servo ID--------------------------
 # Unlock EPROM
-result, error = packetHandler.unLockEprom(SCS_ID)
+result, error = packetHandler.unLockEprom(SCS_ID_current)
 print(f"Unlock EEPROM Result: {packetHandler.getTxRxResult(result)}")
 if error:
     print(f"Error: {packetHandler.getRxPacketError(error)}")
 
-# Change SERVO I coefficient
-result, error = packetHandler.write1ByteTxRx(SCS_ID, SCSCL_I, SCS_I_changeto)
-print(f"Change I coefficient Result: {packetHandler.getTxRxResult(result)}")
+# Change SERVO ID
+result, error = packetHandler.write1ByteTxRx(SCS_ID_current, SCS_ID, SCS_ID_changeto)
+print(f"Change ID Result: {packetHandler.getTxRxResult(result)}")
 if error:
     print(f"Error: {packetHandler.getRxPacketError(error)}")
 
 # Lock EPROM
-result, error = packetHandler.LockEprom(SCS_ID)
+result, error = packetHandler.LockEprom(SCS_ID_changeto)
 print(f"Lock EEPROM Result: {packetHandler.getTxRxResult(result)}")
 if error:
     print(f"Error: {packetHandler.getRxPacketError(error)}")
-#---------------------------Change servo I coefficient--------------------------
+#---------------------------Change servo ID--------------------------
 
 # Close port
 portHandler.closePort()
