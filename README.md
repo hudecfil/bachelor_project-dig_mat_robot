@@ -1,40 +1,62 @@
 # Design and Construction of a Relative Robot for Manipulating Digital Materials
 
 In my bachelor project I will be focusing on design and construction of a relative builder robot, that manipulates with digital
-materials. Digital materials come in variety of mechanical properties, which are picked to suit given purpose. For our purpose of building structures we will use discrete metamaterials subunits called VOXELs. Voxels are simply "cubes" formed of 6 faces - lattices.
+materials. Digital materials come in variety of mechanical properties, which are picked to suit given purpose. In our case of building structures we will use discrete metamaterials subunits called VOXELs. Voxels are simply "cubes" formed of 6 faces - lattices.
 Those lattices can have earlier mentioned various properties, for example they can be just rigid structures keeping its shape, or they can be able to squeeze in certain directions. Voxels that I'll be using are rigid, but equiped with magnetic joints, so they can be joined together just like LEGO bricks.
 
 ## Design of the voxels
 
 First of all I have to design my voxels. I based it on design of simple rigid voxel. I added holes for magnets and edited corner brace - when robot docks on the voxel, cross-shaped anchor has to get through lattice. Whole design is made in Fusion 360. Each lattice is 3D printed from PETG. Specific print settings: sequential printing - printer finishes first one object and than moves to another; no infill - increased number of perimeters to 5; material - PETG;
 temperatures (nozzle/heat-bed) - first lr.: 230°C/85°C, other lrs.: 240°C/90°C;  layer height - 0.15 mm. <br>
-My first printed lattice was designed to test strenght of bond between two lattices. Each lattice is equiped with 4 pairs of magnets in each corner.
-We have to use pairs of magnets because when we put two mirrored lattices next to each other, the polarities of the magnets have to be opposite as you can see in the picture below [^1].
-
+My first printed lattice was designed to test strength of bond between two lattices. Each lattice is equiped with 4 pairs of magnets in each corner.
+We have to use pairs of magnets because when we put two mirrored lattices next to each other, the polarities of the magnets have to be opposite as you can see in the picture below[^1].
+<img src="images/jenet2-2930486-large.gif" alt="Magnetic lattice MK1" style="width:600px">
 
 Magnets are 3x3 mm (DxH) neodym cylinders, with magnetic force of 290 g, which seemed sufficient. First idea of fixing the magnets in place was to glue them in the holes (with clearence 0.3 mm),
 but it would be too difficult when assembling larger number of voxels. Magnets fitted in holes perfectly. <br>
-The updated version is designed for press-fitting the magnets. Therefore the holes are a bit smaller with 0.1 mm offset.<br>
+The updated version is designed for press-fitting the magnets. Therefore, the holes are a bit smaller with 0.1 mm offset.<br>
 
 <img src="images/IMG_3946.JPG" alt="Magnetic lattice MK1" style="width:600px">
 <img src="images/IMG_3981.JPG" alt="Magnetic voxel MK1" style="width:600px">
 
 
 ## Design of the robot
+The robot's design is inspired by the BILL-E[^2] robot from MIT (further NASA project ARMADAS). Inchworm type robots like BILL-E uses locomotion to move around the structure.
+Front gripper is equipped with manipulator that robot uses to handle voxels. Both grippers and manipulator uses same locking system.
 
 ### Gripper anchor
 When robot gripper lands on the voxel, the robot has to attach to it. For this purpose is the gripper equipped with servo actuated anchor.
-The anchor is cross-shaped to pass through the voxel lattice, when it's 45° rotated. Servo then turns the anchor back to its base position,
-and locks the gripper in place. I designed prototype which you can see on the picture below [ADD IMAGE]. I made the arms of anchor thicker (3 mm),
-to be more robust, when the robot leans with all its weight to it. I also added round corners to the endings of anchor arms, so the anchor
-can lock in place smoothly, when its not positioned perfectly. Another problem that I found out was that the anchor is too far from the voxel
-lattice, and that the gripper has wobble when locked on the voxel. So I made multiple spacers that changes distance from motor mount, and tested them.
-I got best result with spacer that made the anchor to be without any tolerance.
+The anchor is cross-shaped to pass through the voxel lattice, when it's 45° rotated. Servo then turns the anchor back to its 0° position,
+and locks the gripper in place. I made the arms of anchor thicker (3 mm), to be more robust, when the robot leans with all its weight to it.
+I also added round corners to the endings of anchor arms, so the anchor can lock in place smoothly, when its not positioned perfectly.
+Another problem that I found out was that the anchor is too far from the voxel lattice, and that the gripper has wobble when locked on the voxel.
+So I made multiple spacers that changes distance from motor mount, and tested them. I got best result with spacer that made the anchor to be without any tolerance.
 
-### Gripper
-The design of the gripper was quite challenging. [...COMPLETE THIS PARAGRAPH]
+<img src="images/anchor.png" alt="Anchor" style="width:600px">
 
-## Bring electronics to life
+### Rear Gripper
+I derived the gripper design from my used hardware. I needed to fit in one ST3215 motor that moves the gripper around z-axis and one SC09 motor which actuates
+the anchor. It consists of three parts to be easily printable: gripper cross, gripper body itself and ST servo cap. Gripper cross arms have 0.1 mm clearance from the
+voxel lattice, so the gripper fits easily on the voxel, and the connection is solid enough.
+<img src="images/gripper.png" alt="Rear Gripper" style="width:600px">
+
+### Legs
+In the beginning I wanted to make hollow legs in which would fit all the electronics inside. I estimated that way length of the legs around 20 cm (axis-axis).
+I tried to run simulation in Matlab using Robotics Toolbox. In MITs paper[^1] they derived the minimum length of the legs, so the robot is able to perform convex/concave
+cornering move. It occurs in situation when robot is moving more than one layer of the voxels up and the joints reaches their limit angles. I wanted to simulate this
+situation in Matlab, but the generated inverse kinematics didn't work as I expected. Probably because the base of the robot had offset, but I could't find a way to change it.
+<img src="images/matlab_sim.png" alt="Matlab simulation" style="width:600px">
+Nevertheless I found out that the design I wanted at first will struggle only with legs placed on the neighbouring voxels, because they were too bulky. <br>
+Instead I decided to choose minimalistic design with H-profile shaped legs, that are robust enough and lightweight at the same time. The electronics is compactly placed in the box
+attached to the rear leg. From the size of the electronics box is derived resulting length of the legs l = 24 mm (axis-axis).<br>
+After prototyping the rear leg I had to divide it in two parts so its possible to assemble the fork which holds the elbow motor.
+<img src="images/legs.png" alt="Legs" style="width:600px">
+<img src="images/electronics_box2.png" alt="Electronics box" style="width:600px">
+
+### Front Gripper & Voxel Manipulator
+
+
+## Electronics
 
 ### Raspberry Pi Zero 2W
 I don't want to connect monitor to RasPi so I will be using it in headless setup - connect via SSH. In future I am planning to run ROS2 on the controller,
@@ -64,13 +86,17 @@ Then also disabling hciuart service, which initializes BT modem is needed: `sudo
 finally worked. Now I am using the /dev/ttyAMA0 port (default port for BT) instead of /dev/ttyS0. I solved the problem with permission denied by disabling the serial login shell: in the /boot/cmdline.txt remove text `console=serial0,115200`.<br>
 With communication working stably I could get into setting the servos IDs. This is done by accessing the EPROM memory of the servo, and rewriting the ID value on the
 `STS_ID = 5` address. I achieved controlling independently all five ST servos connected in series.
-![ST servos demo](images/IMG_4198.JPG)
+<img src="images/IMG_4198.JPG" alt="ST servos demo" style="width:600px">
+
 
 ### SC09 & SC15 
 
 ## References
 [^1]: B. Jenett, A. Abdel-Rahman, K. Cheung and N. Gershenfeld, "Material–Robot System for Assembly of Discrete Cellular Structures," in IEEE Robotics and Automation Letters, vol. 4, no. 4, pp. 4019-4026, Oct. 2019, doi: 10.1109/LRA.2019.2930486.
-keywords: {Mobile robots;Robot kinematics;Robotic assembly;Path planning;End effectors;Robot sensing systems;Multi-robot systems;Assembly;space robotics and automation;path planning for multiple mobile robots or agents},
+keywords: {Mobile robots;Robot kinematics;Robotic assembly;Path planning;End effectors;Robot sensing systems;Multi-robot systems;Assembly;space robotics and automation;path planning for multiple mobile robots or agents}
+[^2]: B. Jenett and K. Cheung, “BILL-E: Robotic platform for locomotion and manipulation of lightweight space structures,” in Proc. 25th AIAA/AHS
+Adapt. Struct. Conf., 2017, paper AIAA 2017-1876.
+
 
 
 
