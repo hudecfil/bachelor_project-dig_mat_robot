@@ -153,7 +153,7 @@ Then also disabling hciuart service, which initializes BT modem is needed: `sudo
 finally worked. Now I am using the /dev/ttyAMA0 port (default port for BT) instead of /dev/ttyS0. I solved the problem with permission denied by disabling the serial login shell: in the /boot/cmdline.txt remove text `console=serial0,115200`.<br>
 With communication working stably I could get into setting the servos IDs. This is done by accessing the EPROM memory of the servo, and rewriting the ID value on the
 `STS_ID = 5` address. Accessing the EPROM is done by using `LockEprom` and `unLockEprom` commands. The servo IDs are shown in the picture in Whole assembly section. 
-Complete memory table of the addresses is saved in this branch (it is the same for both ST/SC series servos even though its listed only for SC servos).
+Complete memory tables are saved in the main branch.<br>
 I achieved controlling independently all five ST servos connected in series.
 <br>
 <img src="images/IMG_4198.JPG" alt="ST servos demo" style="width:600px">
