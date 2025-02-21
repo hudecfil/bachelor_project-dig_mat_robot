@@ -1,6 +1,6 @@
 import sys
 import os
-import time
+from time import sleep
 
 if os.name == 'nt':
     import msvcrt
@@ -91,7 +91,7 @@ while 1:
 
     if moving==0:
         break
-time.sleep(5)
+sleep(5)
 
 scs_comm_result, scs_error = scs.WritePos(ANCHOR_ID, LOCK_POS, SCS_MOVING_TIME, SCS_MOVING_SPEED)
 if scs_comm_result != COMM_SUCCESS:
@@ -116,7 +116,7 @@ while 1:
 
     if moving==0:
         break
-time.sleep(3)
+sleep(3)
 
 scs_comm_result, scs_error = scs.WritePos(MANIP_ID, MANIP_UP, SCS_MOVING_TIME, SCS_MOVING_SPEED)
 if scs_comm_result != COMM_SUCCESS:
@@ -141,7 +141,7 @@ while 1:
 
     if moving==0:
         break
-time.sleep(5)
+sleep(5)
 
 scs_comm_result, scs_error = scs.WritePos(MANIP_ID, MANIP_DOWN, SCS_MOVING_TIME, SCS_MOVING_SPEED)
 if scs_comm_result != COMM_SUCCESS:
@@ -166,7 +166,7 @@ while 1:
 
     if moving==0:
         break
-time.sleep(5)
+sleep(5)
 
 scs_comm_result, scs_error = scs.WritePos(ANCHOR_ID, UNLOCK_POS, SCS_MOVING_TIME, SCS_MOVING_SPEED)
 if scs_comm_result != COMM_SUCCESS:
@@ -191,7 +191,7 @@ while 1:
 
     if moving==0:
         break
-time.sleep(3)
+sleep(3)
 
 scs_comm_result, scs_error = scs.WritePos(MANIP_ID, MANIP_UP, SCS_MOVING_TIME, SCS_MOVING_SPEED)
 if scs_comm_result != COMM_SUCCESS:
