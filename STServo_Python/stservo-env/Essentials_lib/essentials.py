@@ -48,7 +48,7 @@ class Robot:
             quit()
 
         # Set port baudrate
-        if self.portHandler.setBaudRate(BAUDRATE):
+        if self.portHandler.setBaudRate(self.baudrate):
             print("Succeeded to change the baudrate")
         else:
             print("Failed to change the baudrate")
