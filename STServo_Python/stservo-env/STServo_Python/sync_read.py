@@ -81,7 +81,7 @@ while 1:
 
     for sts_id in range(1, 11):
         # Check if groupsyncread data of STServo#1~10 is available
-        sts_data_result, sts_error = groupSyncRead.isAvailable(scs_id, STS_PRESENT_POSITION_L, 4)
+        sts_data_result, sts_error = groupSyncRead.isAvailable(sts_id, STS_PRESENT_POSITION_L, 4)
         if sts_data_result == True:
             # Get STServo#scs_id present position value
             sts_present_position = groupSyncRead.getData(sts_id, STS_PRESENT_POSITION_L, 2)
