@@ -15,6 +15,13 @@ UNLOCK_POS = 180
 MANIP_DOWN = 50
 MANIP_UP = 555
 
+# Servos zero position [steps]
+STS1_ZERO = 2100
+STS5_ZERO = 2050
+STS2_ZERO = 2050
+
+
+
 class Robot:
     def __init__(self, baudrate = 1000000, deviceName = "/dev/ttyAMA0"):
         self.baudrate = baudrate
@@ -120,6 +127,36 @@ class Robot:
             # Clear syncread parameter storage
             groupSyncRead.clearParam()
             if sts_last_moving == 0:
+                break
+
+    def move_STS_step(self, servo_id=1, steps=2048):
+        # Default setting
+        #STS_MINIMUM_POSITION_VALUE  = 0           # STServo will rotate between this value
+        #STS_MAXIMUM_POSITION_VALUE  = 2048        # ST = 4095 max position
+
+        # Write STServo goal position/moving speed/moving acc
+        sts_comm_result, sts_error = self.sts.WritePosEx(servo_id, steps, STS_MOVING_SPEED, STS_MOVING_ACC)
+        if sts_comm_result != COMM_SUCCESS:
+            print("%s" % self.sts.getTxRxResult(sts_comm_result))
+        elif sts_error != 0:
+            print("%s" % self.sts.getRxPacketError(sts_error))
+
+        while 1:
+            # Read STServo present position
+            sts_present_position, sts_present_speed, sts_comm_result, sts_error = self.sts.ReadPosSpeed(servo_id)
+            if sts_comm_result != COMM_SUCCESS:
+                print(self.sts.getTxRxResult(sts_comm_result))
+            else:
+                print("[ID:%03d] GoalPos:%d PresPos:%d PresSpd:%d" % (servo_id, steps, sts_present_position, sts_present_speed))
+            if sts_error != 0:
+                print(self.sts.getRxPacketError(sts_error))
+
+            # Read STServo moving status
+            moving, sts_comm_result, sts_error = self.sts.ReadMoving(servo_id)
+            if sts_comm_result != COMM_SUCCESS:
+                print(self.sts.getTxRxResult(sts_comm_result))
+
+            if moving==0:
                 break
 
     def move_manip(self, down=False):
