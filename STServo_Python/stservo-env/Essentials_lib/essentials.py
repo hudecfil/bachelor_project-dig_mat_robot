@@ -12,7 +12,7 @@ SCS_MOVING_SPEED = 500
 
 LOCK_POS = 35
 UNLOCK_POS = 180
-MANIP_DOWN = 50
+MANIP_DOWN = 45
 MANIP_UP = 555
 
 # Servos zero position [steps]
@@ -257,7 +257,7 @@ class Robot:
                 print("%s" % self.scs.getTxRxResult(scs_comm_result))
             elif scs_error != 0:
                 print("%s" % self.scs.getRxPacketError(scs_error))
-        sleep(3)
+        sleep(5)
 
     def lock_anchor(self, servo_id, lock=False):
         """ Function locks/unlocks [True/False] the anchor with given servo_id """
