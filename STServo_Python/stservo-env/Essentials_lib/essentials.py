@@ -5,7 +5,7 @@ from time import sleep
 sys.path.append("..")
 from STservo_sdk import *
 
-STS_MOVING_SPEED = 2400
+STS_MOVING_SPEED = 2000 # Default: 2400
 STS_MOVING_ACC = 50
 SCS_MOVING_TIME = 0
 SCS_MOVING_SPEED = 500
@@ -15,13 +15,27 @@ UNLOCK_POS = 180
 MANIP_DOWN = 45
 MANIP_UP = 555
 
-# Servos zero position [steps]
+# STS zero position [steps]
 STS1_ZERO = 2100
 STS2_ZERO = 2050
 STS3_ZERO = 2100
 STS4_ZERO = 2175
 STS5_ZERO = 2050
 
+# STS limits [rad]
+STS15_UP_LIM = np.pi
+STS24_UP_LIM = (3*np.pi)/4
+STS3_UP_LIM = 0
+STS15_LOW_LIM = -np.pi
+STS24_LOW_LIM = -(3*np.pi)/4
+STS3_LOW_LIM = -(8*np.pi)/9 # Approx. 8deg from position when grippers on the neighbouring voxels
+
+# Robot link parameters [m]
+LEG_LENGTH = 0.108
+GRIPPER_HEIGHT = 0.0568
+
+# Voxel parameters [m]
+VOX_LATTICE_PITCH = 0.090
 
 class Robot:
     def __init__(self, baudrate = 1000000, deviceName = "/dev/ttyAMA0"):
@@ -34,8 +48,13 @@ class Robot:
         self.scs_anchor_IDs = [6,7,9]
         self.scs_manip_ID = 8
         self.num_sts = len(self.sts_IDs)
-        self.sts_max_limit = []
         self.sts_zero_points = [STS1_ZERO, STS2_ZERO, STS3_ZERO, STS4_ZERO, STS5_ZERO]
+        self.sts_up_limits = np.array([STS15_UP_LIM, STS24_UP_LIM, STS3_UP_LIM, STS24_UP_LIM, STS15_UP_LIM])
+        self.sts_low_limits = np.array([STS15_LOW_LIM, STS24_LOW_LIM, STS3_LOW_LIM, STS24_LOW_LIM, STS15_LOW_LIM])
+        self.link_parameters = np.array([GRIPPER_HEIGHT, LEG_LENGTH, LEG_LENGTH, GRIPPER_HEIGHT])
+        self.rear_grip_pos = np.zeros(3)
+        self.front_grip_pos = np.array([0.09,0,0])
+
 
         # Open port
         if self.portHandler.openPort():
@@ -55,7 +74,7 @@ class Robot:
         # Close port
         self.portHandler.closePort()
 
-    def STS_rad_to_steps(self, servo_id, rad):
+    def STS_rad_to_steps(self, servo_id, rad) -> int:
         """ Function maps input angle in radians to STS travel steps.
 
             - Mid-point zero reference from self.sts_zero_points
@@ -68,16 +87,19 @@ class Robot:
         # Retrieve the correct zero point for the servo
         zero_point = self.sts_zero_points[servo_id - 1]
 
-        # Convert radian to steps
-        steps = int(zero_point + (rad * (4096 / (2*np.pi))))
-
+        # Convert radians to steps
+        if servo_id == 4:
+            steps = int((rad * (4096 / (2*np.pi))) - zero_point)
+        else:
+            steps = int(zero_point + (rad * (4096 / (2*np.pi))))
+        
         # Debugging output
         print(f"Servo {servo_id} | Input rad: {rad:.4f} | Zero: {zero_point} | Steps: {steps}")
 
         return steps
 
     
-    def STS_steps_to_rad(self, servo_id, steps):
+    def STS_steps_to_rad(self, servo_id, steps) -> float:
         """ Converts STS travel steps to radians.
 
             - Mid-point zero reference from self.sts_zero_points
@@ -86,7 +108,10 @@ class Robot:
         """
         zero_point = self.sts_zero_points[servo_id-1]
 
-        rad = (steps - zero_point)*((2*np.pi)/4096)
+        if servo_id == 4:
+            rad = (zero_point-steps)*((2*np.pi)/4096)
+        else:
+            rad = (steps-zero_point)*((2*np.pi)/4096)
 
         return rad
 
@@ -100,6 +125,11 @@ class Robot:
         # Init configuration q
         if q is None:
             q = np.zeros(self.num_sts)
+        
+        # Check if input q has the right size and the config q lies within the joint limits
+        assert q.shape == (5,), "Length of the vector q must be 5!"
+        assert np.all((self.sts_low_limits <= q) & (q <= self.sts_up_limits)), \
+        f"Joint configuration {config} out of bounds! Must be between {lower_limits} and {upper_limits}."
 
         # Map q from rad to steps
         q = [self.STS_rad_to_steps(i+1, q_i) for i, q_i in enumerate(q)]
@@ -137,7 +167,7 @@ class Robot:
                 # Check if groupsyncread data of STServo#1~10 is available
                 sts_data_result, sts_error = groupSyncRead.isAvailable(sts_id, STS_PRESENT_POSITION_L, self.num_sts)
                 if sts_data_result == True:
-                    # Get STServo#scs_id present position moving value
+                    # Get STServo#sts_id present position, speed, moving value
                     sts_present_position = groupSyncRead.getData(sts_id, STS_PRESENT_POSITION_L, 2)
                     sts_present_speed = groupSyncRead.getData(sts_id, STS_PRESENT_SPEED_L, 2)
                     sts_present_moving = groupSyncRead.getData(sts_id, STS_MOVING, 1)
@@ -282,6 +312,56 @@ class Robot:
         self.move_manip(down=True)
         self.lock_anchor(servo_id=9, lock=grab)
         self.move_manip(down=False)
+
+    def step_fk(self, base_pos: np.array) -> np.array:
+        l1 = l4 = GRIPPER_HEIGHT
+        l2 = l3 = LEG_LENGTH
+        q_wrapped = self.get_q()
+        q_unwrapped = np.unwrap(q_wrapped)
+        theta_1, theta_2, theta_3, theta_4, theta_5 = q_unwrapped
+
+        x_ee = base_pos[0] + l2*np.sin(theta_2) + l3*np.sin(theta_2 + theta_3) + l4*np.sin(theta_2 + theta_3 + theta_4)
+        y_ee = base_pos[1]
+        z_ee = base_pos[2] + l2*np.cos(theta_2) + l3*np.cos(theta_2 + theta_3) + l4*np.cos(theta_2 + theta_3 + theta_4)
+
+        ee_pos = np.array([x_ee, y_ee, z_ee])
+        return ee_pos
+
+    def step_ik(self, ee_target_pos: np.array) -> np.array:
+        assert ee_target_pos.shape == (3,), "Length of the vector ee_target_pos must be 3!"
+
+        l1 = l2 = LEG_LENGTH
+        a1 = l1
+        a2 = l2
+        x = ee_target_pos[0]
+        y = ee_target_pos[2]
+
+        q_res = np.zeros(self.num_sts)
+
+        theta_1 = 0
+        theta_5 = 0
+        
+        # Compute theta2 using equation (3)
+        r = x**2 + y**2
+        D = ((a1**2 + a2**2)**2 - r/r - (a1**2 + a2**2)**2)
+        print(D)
+        theta_3 = 2 * np.arctan2(np.sqrt(D), 1)  # Ensure correct quadrant selection
+
+        # Compute theta1 using equation (2)
+        theta_2 = np.arctan2(y, x) - np.arctan2(a2 * np.sin(theta_3), a1 + a2 * np.cos(theta_3))
+
+        # Compute theta3 using equation (4)
+        theta_4 = 3*np.pi - theta_2 - theta_3  # Convert 540 degrees to radians
+
+        # Ensure angles are mapped to [-pi, pi]
+        theta_2 = np.arctan2(np.sin(theta_2), np.cos(theta_2))
+        theta_3 = np.arctan2(np.sin(theta_3), np.cos(theta_3))
+        theta_4 = np.arctan2(np.sin(theta_4), np.cos(theta_4))
+
+        q_res = np.array([theta_1, theta_2, theta_3, theta_4, theta_5])
+
+        return q_res
+        
 
 
 
