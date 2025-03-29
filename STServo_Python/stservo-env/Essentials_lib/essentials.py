@@ -1,9 +1,18 @@
 import sys
+import os
 import numpy as np
 from time import sleep
 
+core_path = os.path.join(os.path.dirname(__file__), 'core')
+sys.path.insert(0, core_path)
+from se2 import SE2
+from so2 import SO2
+from geometry import circle_circle_intersection
+
 sys.path.append("..")
 from STservo_sdk import *
+
+
 
 STS_MOVING_SPEED = 2000 # Default: 2400
 STS_MOVING_ACC = 50
@@ -31,8 +40,9 @@ STS24_LOW_LIM = -(3*np.pi)/4
 STS3_LOW_LIM = -(8*np.pi)/9 # Approx. 8deg from position when grippers on the neighbouring voxels
 
 # Robot link parameters [m]
-LEG_LENGTH = 0.108
+LEG_LENGTH = 0.180
 GRIPPER_HEIGHT = 0.0568
+J2_Y_POS = 0.0898
 
 # Voxel parameters [m]
 VOX_LATTICE_PITCH = 0.090
@@ -51,9 +61,10 @@ class Robot:
         self.sts_zero_points = [STS1_ZERO, STS2_ZERO, STS3_ZERO, STS4_ZERO, STS5_ZERO]
         self.sts_up_limits = np.array([STS15_UP_LIM, STS24_UP_LIM, STS3_UP_LIM, STS24_UP_LIM, STS15_UP_LIM])
         self.sts_low_limits = np.array([STS15_LOW_LIM, STS24_LOW_LIM, STS3_LOW_LIM, STS24_LOW_LIM, STS15_LOW_LIM])
-        self.link_parameters = np.array([GRIPPER_HEIGHT, LEG_LENGTH, LEG_LENGTH, GRIPPER_HEIGHT])
-        self.rear_grip_pos = np.zeros(3)
-        self.front_grip_pos = np.array([0.09,0,0])
+        self.link_parameters = np.array([LEG_LENGTH, LEG_LENGTH, J2_Y_POS])
+        self.rear_grip_pose = SE2(translation=[0,0], rotation=SO2(np.pi/2))
+        self.base_pose = SE2(translation=[0,J2_Y_POS], rotation=SO2(np.pi/2))
+        self.front_grip_pose = np.array([0.09,0,0])
 
 
         # Open port
@@ -361,6 +372,46 @@ class Robot:
         q_res = np.array([theta_1, theta_2, theta_3, theta_4, theta_5])
 
         return q_res
+
+    def ik_analytical(self, flange_pose_desired: SE2) -> list[np.ndarray]:
+        """Compute IK analytically, return all solutions for joint limits being
+        from -pi to pi for revolute joints -inf to inf for prismatic joints."""
+
+        def normalize_angle(angle: float) -> float:
+            """Normalize angle to interval of [-pi, pi]"""
+            return (angle + np.pi) % (2 * np.pi) - np.pi
+            #return np.arctan2(np.sin(angle), np.cos(angle))
+
+        all_solutions = []
+
+        # Get flange position, orientation and link parameters
+        fl_des_pos = flange_pose_desired.translation
+        fl_des_orient = flange_pose_desired.rotation.angle
+        # Get base (j0) position, orientation
+        j0_pos = self.base_pose.translation
+        j0_orient = self.base_pose.rotation.angle
+
+        l = np.copy(self.link_parameters)
+
+        # Calculate position of j2 joint from flange position
+        j2_pos = flange_pose_desired.translation - (l[2] * np.array([np.cos(fl_des_orient), np.sin(fl_des_orient)]))
+
+        # Calculate intersection between circles with centers j2, j0 and radius l[1], l[0]
+        j1_pos = circle_circle_intersection(j2_pos, l[1], j0_pos, l[0])
+
+        # Calculate joint configurations for both solutions of intersection
+        for j1 in j1_pos:
+            q1 = np.arctan2(j1[1] - j0_pos[1], j1[0] - j0_pos[0]) - j0_orient
+            q2 = np.arctan2(j2_pos[1] - j1[1], j2_pos[0] - j1[0]) - q1 - j0_orient
+            q3 = fl_des_orient - q1 - q2 - j0_orient
+
+            q = [q1, q2, q3]
+            # Normalize angles
+            q = [normalize_angle(q_i) for q_i in q]
+
+            all_solutions.append(q)
+
+        return all_solutions
         
 
 
