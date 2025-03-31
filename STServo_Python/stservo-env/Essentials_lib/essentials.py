@@ -12,7 +12,7 @@ from geometry import circle_circle_intersection
 sys.path.append("..")
 from STservo_sdk import *
 
-STS_MOVING_SPEED = 2000 # Default: 2400
+STS_MOVING_SPEED = 1000 # Default: 2400
 STS_MOVING_ACC = 50
 SCS_MOVING_TIME = 0
 SCS_MOVING_SPEED = 500
@@ -97,13 +97,13 @@ class Robot:
         zero_point = self.sts_zero_points[servo_id - 1]
 
         # Convert radians to steps
-        if servo_id == 4:
-            steps = int((rad * (4096 / (2*np.pi))) - zero_point)
+        if servo_id in [1,4]:
+            steps = int(zero_point - (rad * (4096 / (2*np.pi))))
         else:
             steps = int(zero_point + (rad * (4096 / (2*np.pi))))
-        
+            
         # Debugging output
-        print(f"Servo {servo_id} | Input rad: {rad:.4f} | Zero: {zero_point} | Steps: {steps}")
+        #print(f"Servo {servo_id} | Input rad: {rad:.4f} | Zero: {zero_point} | Steps: {steps}")
 
         return steps
 
@@ -142,6 +142,7 @@ class Robot:
 
         # Map q from rad to steps
         q = [self.STS_rad_to_steps(i+1, q_i) for i, q_i in enumerate(q)]
+        print("q_steps: ", q)
 
         groupSyncRead = GroupSyncRead(self.sts, STS_PRESENT_POSITION_L, 4)
 
@@ -157,9 +158,11 @@ class Robot:
         if sts_comm_result != COMM_SUCCESS:
             print("%s" % self.sts.getTxRxResult(sts_comm_result))
 
+        time.sleep(0.05)  # wait for servo status moving=1
+
         # Clear syncwrite parameter storage
         self.sts.groupSyncWrite.clearParam()
-        time.sleep(0.002)  # wait for servo status moving=1
+
         while 1:
             # Add parameter storage for STServos
             for sts_id in self.sts_IDs:
@@ -256,7 +259,8 @@ class Robot:
                 break
 
     def move_STS_rad(self, servo_id=1, rad=np.pi/4):
-        steps = self.STS_rad_to_steps(servo_id, steps)
+        steps = 0
+        steps = self.STS_rad_to_steps(servo_id, rad)
         # Write STServo goal position/moving speed/moving acc
         sts_comm_result, sts_error = self.sts.WritePosEx(servo_id, steps, STS_MOVING_SPEED, STS_MOVING_ACC)
         if sts_comm_result != COMM_SUCCESS:
@@ -375,21 +379,21 @@ class Robot:
             q = np.array([normalize_angle(q_i) for q_i in q])
             if np.all((self.sts_low_limits <= q) & (q <= self.sts_up_limits)):
                 all_solutions.append(q)
-        #print("All solutions: ", all_solutions)
 
         return all_solutions[0]
 
-    def step(self, ee_target_pos: SE2 = SE2(translation=[2*VOX_LATTICE_PITCH, 0], rotation=SO2(-np.pi/2))):
+    def step(self, forward = True, ee_target_pos: SE2 = SE2(translation=[2*VOX_LATTICE_PITCH, 0], rotation=SO2(-np.pi/2))):
         def plan_trajectory(num_points=50):
             trajectory = []
             x_start = self.front_grip_pose.translation[0]
             x_target = ee_target_pos.translation[0]
 
             x_vals = np.linspace(x_start, x_target, num_points)
-
+            a = 49.382716
+            b = 4.444444
             for x in x_vals:
-                z = -x**2 * (VOX_LATTICE_PITCH * x)
-        
+                z = -a*((x-x_start)**2) + b*(x-x_start)
+                print("Point: ", (x,z))
                 cur_transform = SE2(translation = [x,z], rotation = SO2(-np.pi/2) )
                 cur_q = self.step_ik_analytical(cur_transform)
 
@@ -398,14 +402,25 @@ class Robot:
             return trajectory
 
         trajectory = plan_trajectory()
-        print("# trajectory waypoints: ", len(trajectory))
-        input()
-        for point in trajectory:
-            #print(point)
-        input()
-        for point in trajectory:
-            print(point)
-            #self.move_to_q(point)
+
+        if forward:
+            print("# trajectory waypoints: ", len(trajectory))
+            for point in trajectory:
+                print("q_rad: ", point)
+            #input()
+            for point in trajectory:
+                print("q_rad: ", point)
+                self.move_to_q(point)
+        else:
+            trajectory = trajectory[::-1]
+            print("# trajectory waypoints: ", len(trajectory))
+            for point in trajectory:
+                print("q_rad: ", point)
+            #input()
+            for point in trajectory:
+                print("q_rad: ", point)
+                self.move_to_q(point)
+        
             
 
 
