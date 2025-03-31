@@ -12,8 +12,6 @@ from geometry import circle_circle_intersection
 sys.path.append("..")
 from STservo_sdk import *
 
-
-
 STS_MOVING_SPEED = 2000 # Default: 2400
 STS_MOVING_ACC = 50
 SCS_MOVING_TIME = 0
@@ -33,10 +31,10 @@ STS5_ZERO = 2050
 
 # STS limits [rad]
 STS15_UP_LIM = np.pi
-STS24_UP_LIM = (3*np.pi)/4
+STS24_UP_LIM = (11*np.pi)/18 # (3*np.pi)/4
 STS3_UP_LIM = 0
 STS15_LOW_LIM = -np.pi
-STS24_LOW_LIM = -(3*np.pi)/4
+STS24_LOW_LIM = -(11*np.pi)/18 # -(3*np.pi)/4
 STS3_LOW_LIM = -(8*np.pi)/9 # Approx. 8deg from position when grippers on the neighbouring voxels
 
 # Robot link parameters [m]
@@ -64,7 +62,7 @@ class Robot:
         self.link_parameters = np.array([LEG_LENGTH, LEG_LENGTH, J2_Y_POS])
         self.rear_grip_pose = SE2(translation=[0,0], rotation=SO2(np.pi/2))
         self.base_pose = SE2(translation=[0,J2_Y_POS], rotation=SO2(np.pi/2))
-        self.front_grip_pose = np.array([0.09,0,0])
+        self.front_grip_pose = SE2(translation=[VOX_LATTICE_PITCH, 0], rotation=SO2(-np.pi/2))
 
 
         # Open port
@@ -338,42 +336,7 @@ class Robot:
         ee_pos = np.array([x_ee, y_ee, z_ee])
         return ee_pos
 
-    def step_ik(self, ee_target_pos: np.array) -> np.array:
-        assert ee_target_pos.shape == (3,), "Length of the vector ee_target_pos must be 3!"
-
-        l1 = l2 = LEG_LENGTH
-        a1 = l1
-        a2 = l2
-        x = ee_target_pos[0]
-        y = ee_target_pos[2]
-
-        q_res = np.zeros(self.num_sts)
-
-        theta_1 = 0
-        theta_5 = 0
-        
-        # Compute theta2 using equation (3)
-        r = x**2 + y**2
-        D = ((a1**2 + a2**2)**2 - r/r - (a1**2 + a2**2)**2)
-        print(D)
-        theta_3 = 2 * np.arctan2(np.sqrt(D), 1)  # Ensure correct quadrant selection
-
-        # Compute theta1 using equation (2)
-        theta_2 = np.arctan2(y, x) - np.arctan2(a2 * np.sin(theta_3), a1 + a2 * np.cos(theta_3))
-
-        # Compute theta3 using equation (4)
-        theta_4 = 3*np.pi - theta_2 - theta_3  # Convert 540 degrees to radians
-
-        # Ensure angles are mapped to [-pi, pi]
-        theta_2 = np.arctan2(np.sin(theta_2), np.cos(theta_2))
-        theta_3 = np.arctan2(np.sin(theta_3), np.cos(theta_3))
-        theta_4 = np.arctan2(np.sin(theta_4), np.cos(theta_4))
-
-        q_res = np.array([theta_1, theta_2, theta_3, theta_4, theta_5])
-
-        return q_res
-
-    def ik_analytical(self, flange_pose_desired: SE2) -> list[np.ndarray]:
+    def step_ik_analytical(self, flange_pose_desired: SE2) -> list[np.ndarray]:
         """Compute IK analytically, return all solutions for joint limits being
         from -pi to pi for revolute joints -inf to inf for prismatic joints."""
 
@@ -401,17 +364,54 @@ class Robot:
 
         # Calculate joint configurations for both solutions of intersection
         for j1 in j1_pos:
-            q1 = np.arctan2(j1[1] - j0_pos[1], j1[0] - j0_pos[0]) - j0_orient
-            q2 = np.arctan2(j2_pos[1] - j1[1], j2_pos[0] - j1[0]) - q1 - j0_orient
-            q3 = fl_des_orient - q1 - q2 - j0_orient
+            q1 = 0
+            q2 = np.arctan2(j1[1] - j0_pos[1], j1[0] - j0_pos[0]) - j0_orient
+            q3 = np.arctan2(j2_pos[1] - j1[1], j2_pos[0] - j1[0]) - q2 - j0_orient
+            q4 = fl_des_orient - q2 - q3 - j0_orient
+            q5 = 0
 
-            q = [q1, q2, q3]
+            q = np.array([q1, q2, q3, q4, q5])
             # Normalize angles
-            q = [normalize_angle(q_i) for q_i in q]
+            q = np.array([normalize_angle(q_i) for q_i in q])
+            if np.all((self.sts_low_limits <= q) & (q <= self.sts_up_limits)):
+                all_solutions.append(q)
+        #print("All solutions: ", all_solutions)
 
-            all_solutions.append(q)
+        return all_solutions[0]
 
-        return all_solutions
+    def step(self, ee_target_pos: SE2 = SE2(translation=[2*VOX_LATTICE_PITCH, 0], rotation=SO2(-np.pi/2))):
+        def plan_trajectory(num_points=50):
+            trajectory = []
+            x_start = self.front_grip_pose.translation[0]
+            x_target = ee_target_pos.translation[0]
+
+            x_vals = np.linspace(x_start, x_target, num_points)
+
+            for x in x_vals:
+                z = -x**2 * (VOX_LATTICE_PITCH * x)
+        
+                cur_transform = SE2(translation = [x,z], rotation = SO2(-np.pi/2) )
+                cur_q = self.step_ik_analytical(cur_transform)
+
+                trajectory.append(cur_q)
+
+            return trajectory
+
+        trajectory = plan_trajectory()
+        print("# trajectory waypoints: ", len(trajectory))
+        input()
+        for point in trajectory:
+            #print(point)
+        input()
+        for point in trajectory:
+            print(point)
+            #self.move_to_q(point)
+            
+
+
+
+
+
         
 
 
