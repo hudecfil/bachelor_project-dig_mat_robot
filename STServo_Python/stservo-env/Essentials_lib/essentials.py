@@ -60,10 +60,10 @@ class Robot:
         self.sts_up_limits = np.array([STS15_UP_LIM, STS24_UP_LIM, STS3_UP_LIM, STS24_UP_LIM, STS15_UP_LIM])
         self.sts_low_limits = np.array([STS15_LOW_LIM, STS24_LOW_LIM, STS3_LOW_LIM, STS24_LOW_LIM, STS15_LOW_LIM])
         self.link_parameters = np.array([LEG_LENGTH, LEG_LENGTH, BASE_Z_POS_OFF])
-        self.rear_grip_pose = SE2(translation=[0,0], rotation=SO2(-np.pi/2)) # in reference to the front_gripper_base_pose
-        self.rear_grip_base_pose = SE2(translation=[0,0], rotation=SO2(np.pi/2))
-        self.front_grip_pose = SE2(translation=[VOX_LATTICE_PITCH, 0], rotation=SO2(-np.pi/2)) # in reference to the rear_gripper_base_pose
-        self.front_grip_base_pose = SE2(translation=[VOX_LATTICE_PITCH, 0], rotation=SO2(np.pi/2))
+        self.rear_grip_pose = SE2(translation=[0.0, 0.0], rotation=SO2(-np.pi/2)) # in reference to the front_gripper_base_pose
+        self.rear_grip_base_pose = SE2(translation=[0.0, 0.0], rotation=SO2(np.pi/2))
+        self.front_grip_pose = SE2(translation=[VOX_LATTICE_PITCH, 0.0], rotation=SO2(-np.pi/2)) # in reference to the rear_gripper_base_pose
+        self.front_grip_base_pose = SE2(translation=[VOX_LATTICE_PITCH, 0.0], rotation=SO2(np.pi/2))
 
         # Open port
         if self.portHandler.openPort():
@@ -83,7 +83,7 @@ class Robot:
         # Close port
         self.portHandler.closePort()
 
-    def STS_rad_to_steps(self, servo_id, rad, rear_gripper=True) -> int:
+    def STS_rad_to_steps(self, servo_id, rad) -> int:
         """ Function maps input angle in radians to STS travel steps.
 
             - Mid-point zero reference from self.sts_zero_points
@@ -97,16 +97,16 @@ class Robot:
         zero_point = self.sts_zero_points[servo_id - 1]
 
         # Convert radians to steps
-        if rear_gripper: # If kinematics calculated from the rear gripper base
-            if servo_id in [1,4]:
-                steps = int(zero_point - (rad * (4096 / (2*np.pi))))
-            else:
-                steps = int(zero_point + (rad * (4096 / (2*np.pi))))
-        else: # If kinematics calculated from the front gripper base
-            if servo_id in [2,3,5]:
-                steps = int(zero_point - (rad * (4096 / (2*np.pi))))
-            else:
-                steps = int(zero_point + (rad * (4096 / (2*np.pi))))
+        # if rear_gripper: # If kinematics calculated from the rear gripper base
+        if servo_id in [1,4]:
+            steps = int(zero_point - (rad * (4096 / (2*np.pi))))
+        else:
+            steps = int(zero_point + (rad * (4096 / (2*np.pi))))
+        # else: # If kinematics calculated from the front gripper base
+        #     if servo_id in [2,3,5]:
+        #         steps = int(zero_point - (rad * (4096 / (2*np.pi))))
+        #     else:
+        #         steps = int(zero_point + (rad * (4096 / (2*np.pi))))
 
         # Debugging output
         #print(f"Servo {servo_id} | Input rad: {rad:.4f} | Zero: {zero_point} | Steps: {steps}")
@@ -361,8 +361,8 @@ class Robot:
         fl_des_pos = flange_pose_desired.translation
         fl_des_orient = flange_pose_desired.rotation.angle
         # Get base (j0) position, orientation
-        j0_pos = self.base_pose.translation + [0, BASE_Z_POS_OFF]
-        j0_orient = self.base_pose.rotation.angle
+        j0_pos = base_pose.translation + [0, BASE_Z_POS_OFF]
+        j0_orient = base_pose.rotation.angle
 
         l = np.copy(self.link_parameters)
 
@@ -373,7 +373,7 @@ class Robot:
         j1_pos = circle_circle_intersection(j2_pos, l[1], j0_pos, l[0])
 
         # Calculate joint configurations for both solutions of intersection
-        for j1 in j1_pos:
+        for i, j1 in enumerate(j1_pos):
             q1 = 0
             q2 = np.arctan2(j1[1] - j0_pos[1], j1[0] - j0_pos[0]) - j0_orient
             q3 = np.arctan2(j2_pos[1] - j1[1], j2_pos[0] - j1[0]) - q2 - j0_orient
@@ -383,20 +383,19 @@ class Robot:
             q = np.array([q1, q2, q3, q4, q5])
             # Normalize angles
             q = np.array([normalize_angle(q_i) for q_i in q])
-            if np.all((self.sts_low_limits <= q) & (q <= self.sts_up_limits)):
-                all_solutions.append(q)
+            all_solutions.append(q)
 
-        return all_solutions[0]
+        return all_solutions
 
-    def step_front_gripper(self, forward = True, ee_target_pos: SE2 = SE2(translation=[2*VOX_LATTICE_PITCH, 0], rotation=SO2(-np.pi/2))):
-        def plan_trajectory(num_points=50, forward=True):
+    def step_front_gripper(self, forward = True):
+        def plan_trajectory(num_points=50):
             trajectory = []
             if forward:
                 x_start = self.front_grip_pose.translation[0]
                 x_end = self.front_grip_pose.translation[0] + VOX_LATTICE_PITCH
             else:
                 x_start = self.front_grip_pose.translation[0] - VOX_LATTICE_PITCH
-                x_end = ee_target_pos.translation[0]
+                x_end = self.front_grip_pose.translation[0]
 
             x_vals = np.linspace(x_start, x_end, num_points)
             a = 49.382716
@@ -405,51 +404,9 @@ class Robot:
                 z = -a*((x-x_start)**2) + b*(x-x_start)
                 print("Point: ", (x,z))
                 cur_transform = SE2(translation = [x,z], rotation = SO2(-np.pi/2) )
-                cur_q = self.step_ik_analytical(cur_transform)
-
-                trajectory.append(cur_q)
-
-            return trajectory
-
-        trajectory = plan_trajectory()
-
-        if forward:
-            print("# trajectory waypoints: ", len(trajectory))
-            for point in trajectory:
-                print("q_rad: ", point)
-            #input()
-            for point in trajectory:
-                print("q_rad: ", point)
-                self.move_to_q(point)
-        else:
-            trajectory = trajectory[::-1]
-            print("# trajectory waypoints: ", len(trajectory))
-            for point in trajectory:
-                print("q_rad: ", point)
-            #input()
-            for point in trajectory:
-                print("q_rad: ", point)
-                self.move_to_q(point)
-
-        self.front_grip_pose.translation[0] += VOX_LATTICE_PITCH
-        self.front_grip_base_pose.translation[0] += VOX_LATTICE_PITCH
-    
-    def step_rear_gripper(self, forward = True, ee_target_pos: SE2 = SE2(translation=[2*VOX_LATTICE_PITCH, 0], rotation=SO2(-np.pi/2))):
-        def plan_trajectory(num_points=50):
-            trajectory = []
-            x_start = self.front_grip_pose.translation[0]
-            x_end = ee_target_pos.translation[0]
-
-            x_vals = np.linspace(x_start, x_end, num_points)
-            a = 49.382716
-            b = 4.444444
-            for x in x_vals:
-                z = -a*((x-x_start)**2) + b*(x-x_start)
-                print("Point: ", (x,z))
-                cur_transform = SE2(translation = [x,z], rotation = SO2(-np.pi/2) )
-                cur_q = self.step_ik_analytical(cur_transform)
-
-                trajectory.append(cur_q)
+                all_q = self.step_ik_analytical(self.rear_grip_base_pose, cur_transform)
+                cur_q = all_q[0]
+                if np.all((self.sts_low_limits <= cur_q) & (cur_q <= self.sts_up_limits)): trajectory.append(cur_q)
 
             return trajectory
 
@@ -460,10 +417,55 @@ class Robot:
         print("# trajectory waypoints: ", len(trajectory))
         for point in trajectory:
             print("q_rad: ", point)
+            self.move_to_q(point)
 
+        if forward:
+            self.front_grip_pose.translation[0] += VOX_LATTICE_PITCH
+            self.front_grip_base_pose.translation[0] += VOX_LATTICE_PITCH
+        else:
+            self.front_grip_pose.translation[0] -= VOX_LATTICE_PITCH
+            self.front_grip_base_pose.translation[0] -= VOX_LATTICE_PITCH
+    
+    def step_rear_gripper(self, forward = True):
+        def plan_trajectory(num_points=50):
+            trajectory = []
+            if forward:
+                x_start = self.rear_grip_pose.translation[0]
+                x_end = self.rear_grip_pose.translation[0] + VOX_LATTICE_PITCH
+            else:
+                x_start = self.rear_grip_pose.translation[0] - VOX_LATTICE_PITCH
+                x_end = self.rear_grip_pose.translation[0]
+
+            x_vals = np.linspace(x_start, x_end, num_points)
+            a = 49.382716
+            b = 4.444444
+            for x in x_vals:
+                z = -a*((x-x_start)**2) + b*(x-x_start)
+                print("Point: ", (x,z))
+                cur_transform = SE2(translation = [x,z], rotation = SO2(-np.pi/2) )
+                all_q = self.step_ik_analytical(self.front_grip_base_pose, cur_transform)
+                cur_q = -all_q[1][::-1]
+                if np.all((self.sts_low_limits <= cur_q) & (cur_q <= self.sts_up_limits)): trajectory.append(cur_q)
+
+            return trajectory
+
+        trajectory = plan_trajectory()
+
+        if not forward: trajectory = trajectory[::-1]
+
+        print("# trajectory waypoints: ", len(trajectory))
         for point in trajectory:
             print("q_rad: ", point)
             self.move_to_q(point)
+
+        if forward:
+            self.rear_grip_pose.translation[0] += VOX_LATTICE_PITCH
+            self.rear_grip_base_pose.translation[0] += VOX_LATTICE_PITCH
+            print("DONE FORWARD")
+        else:
+            self.rear_grip_pose.translation[0] -= VOX_LATTICE_PITCH
+            self.rear_grip_base_pose.translation[0] -= VOX_LATTICE_PITCH
+            print("DONE BACKWARD")
         
             
 
