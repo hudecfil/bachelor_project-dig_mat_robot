@@ -38,7 +38,7 @@ STS24_LOW_LIM = -(11*np.pi)/18 # -(3*np.pi)/4
 STS3_LOW_LIM = -(8*np.pi)/9 # Approx. 8deg from position when grippers on the neighbouring voxels
 
 # Robot link parameters [m]
-LEG_LENGTH = 0.180
+LEG_LENGTH = 0.179
 GRIPPER_HEIGHT = 0.0568
 BASE_Z_POS_OFF = 0.0898
 
@@ -414,10 +414,17 @@ class Robot:
 
         if not forward: trajectory = trajectory[::-1]
 
+        # Unlock front gripper
+        self.lock_anchor(7, False)
+        # Follow the trajectory with the front gripper
         print("# trajectory waypoints: ", len(trajectory))
+        assert len(trajectory) == 50, "IK computation failed, didn't get all 50 trajectory waypoints!"
         for point in trajectory:
             print("q_rad: ", point)
             self.move_to_q(point)
+        sleep(0.5)
+        # Lock front gripper
+        self.lock_anchor(7, True)
 
         if forward:
             self.front_grip_pose.translation[0] += VOX_LATTICE_PITCH
@@ -425,6 +432,9 @@ class Robot:
         else:
             self.front_grip_pose.translation[0] -= VOX_LATTICE_PITCH
             self.front_grip_base_pose.translation[0] -= VOX_LATTICE_PITCH
+
+        print("Current FG-base position: ", self.front_grip_base_pose)
+        print("Current FG position: ", self.front_grip_pose)
     
     def step_rear_gripper(self, forward = True):
         def plan_trajectory(num_points=50):
@@ -453,19 +463,36 @@ class Robot:
 
         if not forward: trajectory = trajectory[::-1]
 
+        # Unlock rear gripper
+        self.lock_anchor(6, False)
+        # Follow the trajectory with the rear gripper
         print("# trajectory waypoints: ", len(trajectory))
+        assert len(trajectory) == 50, "IK computation failed, didn't get all 50 trajectory waypoints!"
         for point in trajectory:
             print("q_rad: ", point)
             self.move_to_q(point)
+        sleep(0.5)
+        # Lock rear gripper
+        self.lock_anchor(6, True)
 
         if forward:
             self.rear_grip_pose.translation[0] += VOX_LATTICE_PITCH
             self.rear_grip_base_pose.translation[0] += VOX_LATTICE_PITCH
-            print("DONE FORWARD")
         else:
             self.rear_grip_pose.translation[0] -= VOX_LATTICE_PITCH
             self.rear_grip_base_pose.translation[0] -= VOX_LATTICE_PITCH
-            print("DONE BACKWARD")
+
+        print("Current RG-base position: ", self.rear_grip_base_pose)
+        print("Current RG position: ", self.rear_grip_pose)
+
+    def step(self, forward=True):
+        if forward:
+            self.step_front_gripper(forward)
+            self.step_rear_gripper(forward)
+        else:
+            self.step_rear_gripper(forward)
+            self.step_front_gripper(forward)
+
         
             
 
