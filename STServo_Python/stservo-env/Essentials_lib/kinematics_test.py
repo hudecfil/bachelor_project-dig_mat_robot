@@ -13,6 +13,9 @@ sleep(1)
 robot.step(forward=True)
 sleep(1)
 robot.step(forward=True)
+sleep(1)
+
+robot.grab_rel_voxel(False)
 
 # robot.lock_anchor(7, False)
 # robot.step_front_gripper(True)

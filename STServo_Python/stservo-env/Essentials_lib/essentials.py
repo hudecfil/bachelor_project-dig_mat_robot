@@ -19,8 +19,8 @@ SCS_MOVING_SPEED = 500
 
 LOCK_POS = 35
 UNLOCK_POS = 180
-MANIP_DOWN = 45
-MANIP_UP = 555
+MANIP_DOWN = 65
+MANIP_UP = 575
 
 # STS zero position [steps]
 STS1_ZERO = 2100
@@ -264,9 +264,9 @@ class Robot:
             if moving==0:
                 break
 
-    def move_STS_rad(self, servo_id=1, rad=np.pi/4, rear_gripper=True):
+    def move_STS_rad(self, servo_id=1, rad=np.pi/4):
         steps = 0
-        steps = self.STS_rad_to_steps(servo_id, rad, rear_gripper)
+        steps = self.STS_rad_to_steps(servo_id, rad)
         # Write STServo goal position/moving speed/moving acc
         sts_comm_result, sts_error = self.sts.WritePosEx(servo_id, steps, STS_MOVING_SPEED, STS_MOVING_ACC)
         if sts_comm_result != COMM_SUCCESS:
