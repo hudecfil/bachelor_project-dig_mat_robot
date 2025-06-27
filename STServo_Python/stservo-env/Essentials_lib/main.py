@@ -1,16 +1,20 @@
 from essentials import *
+from client import RobotClient
 
 robot = Robot()
 
-#robot.grab_rel_voxel(grab=True)
-#robot.grab_rel_voxel(grab=False)
+# Set the robot actuators to the home pose
+robot.lock_anchor(6, True)
+robot.lock_anchor(7, True)
+robot.move_manip(angle_steps=MANIP_UP)
+robot.lock_anchor(9, False)
 
-cur_q = robot.get_q()
-print("Current configuration: ", cur_q)
+client = RobotClient(robot=robot, server_ip='192.168.1.93', port=9000)
+client.listen()  # This will keep listening for commands from the server
 
-cur_q_steps = [robot.STS_rad_to_steps(i+1, q_i) for i, q_i in enumerate(cur_q)]
-print("Current computed configuration: ", cur_q_steps)
-#robot.move_STS_step(2, 3125)
-#robot.move_STS_step(2, 2952)
+robot.__del__()
+
+
+
 
 

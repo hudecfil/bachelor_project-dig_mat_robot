@@ -12,22 +12,24 @@ from geometry import circle_circle_intersection
 sys.path.append("..")
 from STservo_sdk import *
 
-STS_MOVING_SPEED = 1000 # Default: 2400
+STS_MOVING_SPEED = 1500 # Default: 2400
 STS_MOVING_ACC = 50
 SCS_MOVING_TIME = 0
 SCS_MOVING_SPEED = 500
 
 LOCK_POS = 35
 UNLOCK_POS = 180
-MANIP_DOWN = 65
-MANIP_UP = 575
+
+MANIP_DOWN0 = 55
+MANIP_DOWN1 = 565
+MANIP_UP = 595
 
 # STS zero position [steps]
 STS1_ZERO = 2100
 STS2_ZERO = 2050
 STS3_ZERO = 2100
 STS4_ZERO = 2175
-STS5_ZERO = 2050
+STS5_ZERO = 2050 # 4096/2 = 2048 ==> correction +2 steps
 
 # STS limits [rad]
 STS15_UP_LIM = np.pi
@@ -98,7 +100,7 @@ class Robot:
 
         # Convert radians to steps
         # if rear_gripper: # If kinematics calculated from the rear gripper base
-        if servo_id in [1,4]:
+        if servo_id in [1,4,5]:
             steps = int(zero_point - (rad * (4096 / (2*np.pi))))
         else:
             steps = int(zero_point + (rad * (4096 / (2*np.pi))))
@@ -130,16 +132,45 @@ class Robot:
 
         return rad
 
+    def get_q(self):
+        cur_q = np.zeros(self.num_sts)
 
-    def move_to_q(self, q: np.array = None):
+        groupSyncRead = GroupSyncRead(self.sts, STS_PRESENT_POSITION_L, 4)
+
+        for sts_id in self.sts_IDs:
+            # Add parameter storage for STServos
+            sts_addparam_result = groupSyncRead.addParam(sts_id)
+            if sts_addparam_result != True:
+                print("[ID:%03d] groupSyncRead addparam failed" % sts_id)
+
+        sts_comm_result = groupSyncRead.txRxPacket()
+        if sts_comm_result != COMM_SUCCESS:
+            print("%s" % self.sts.getTxRxResult(sts_comm_result))
+
+        for sts_id in self.sts_IDs:
+            # Check if groupsyncread data of STServos
+            sts_data_result, sts_error = groupSyncRead.isAvailable(sts_id, STS_PRESENT_POSITION_L, 4)
+            if sts_data_result == True:
+                # Get STServo#scs_id present position value
+                sts_present_position = groupSyncRead.getData(sts_id, STS_PRESENT_POSITION_L, 2)
+                cur_q[sts_id-1] = self.STS_steps_to_rad(sts_id, sts_present_position)
+                print("[ID:%03d] PresPos:%d " % (sts_id, sts_present_position))
+            else:
+                print("[ID:%03d] groupSyncRead getdata failed" % sts_id)
+                continue
+            if sts_error != 0:
+                print("%s" % self.sts.getRxPacketError(sts_error))
+
+        groupSyncRead.clearParam()
+        return cur_q
+
+##################################################### MAIN FUNCTIONS #####################################################
+    def move_to_q(self, q: np.array):
         """ Move STS servos to the given configuration q .
 
             Args:
                 q: configuration vector [rad]
         """
-        # Init configuration q
-        if q is None:
-            q = np.zeros(self.num_sts)
         
         # Check if input q has the right size and the config q lies within the joint limits
         assert q.shape == (5,), "Length of the vector q must be 5!"
@@ -149,8 +180,6 @@ class Robot:
         # Map q from rad to steps
         q = [self.STS_rad_to_steps(i+1, q_i) for i, q_i in enumerate(q)]
         print("q_steps: ", q)
-
-        groupSyncRead = GroupSyncRead(self.sts, STS_PRESENT_POSITION_L, 4)
 
         for sts_id in self.sts_IDs:
             # Add STServo#1~10 goal position\moving speed\moving accc value to the Syncwrite parameter storage
@@ -164,10 +193,13 @@ class Robot:
         if sts_comm_result != COMM_SUCCESS:
             print("%s" % self.sts.getTxRxResult(sts_comm_result))
 
-        time.sleep(0.05)  # wait for servo status moving=1
+        sleep(0.05)  # wait for servo status moving=1
 
         # Clear syncwrite parameter storage
         self.sts.groupSyncWrite.clearParam()
+
+
+        groupSyncRead = GroupSyncRead(self.sts, STS_PRESENT_POSITION_L, 4)
 
         while 1:
             # Add parameter storage for STServos
@@ -206,37 +238,52 @@ class Robot:
             if sts_last_moving == 0:
                 break
 
-    def get_q(self):
-        cur_q = np.zeros(self.num_sts)
+        sleep(0.005)
+        
 
-        groupSyncRead = GroupSyncRead(self.sts, STS_PRESENT_POSITION_L, 4)
+    def lock_anchor(self, servo_id, lock=False):
+        """ Function locks/unlocks [True/False] the anchor with given servo_id """
 
-        for sts_id in self.sts_IDs:
-            # Add parameter storage for STServos
-            sts_addparam_result = groupSyncRead.addParam(sts_id)
-            if sts_addparam_result != True:
-                print("[ID:%03d] groupSyncRead addparam failed" % sts_id)
+        assert servo_id in self.scs_anchor_IDs, "Only SCS anchor IDs allowed!"
 
-        sts_comm_result = groupSyncRead.txRxPacket()
-        if sts_comm_result != COMM_SUCCESS:
-            print("%s" % self.sts.getTxRxResult(sts_comm_result))
+        sleep(0.5)
+        if lock:
+            scs_comm_result, scs_error = self.scs.WritePos(servo_id, LOCK_POS, SCS_MOVING_TIME, SCS_MOVING_SPEED)
+            if scs_comm_result != COMM_SUCCESS:
+                print("%s" % self.scs.getTxRxResult(scs_comm_result))
+            elif scs_error != 0:
+                print("%s" % self.scs.getRxPacketError(scs_error))
+        else:
+            scs_comm_result, scs_error = self.scs.WritePos(servo_id, UNLOCK_POS, SCS_MOVING_TIME, SCS_MOVING_SPEED)
+            if scs_comm_result != COMM_SUCCESS:
+                print("%s" % self.scs.getTxRxResult(scs_comm_result))
+            elif scs_error != 0:
+                print("%s" % self.scs.getRxPacketError(scs_error))
+        sleep(0.5)
 
-        for sts_id in self.sts_IDs:
-            # Check if groupsyncread data of STServos
-            sts_data_result, sts_error = groupSyncRead.isAvailable(sts_id, STS_PRESENT_POSITION_L, 4)
-            if sts_data_result == True:
-                # Get STServo#scs_id present position value
-                sts_present_position = groupSyncRead.getData(sts_id, STS_PRESENT_POSITION_L, 2)
-                cur_q[sts_id-1] = self.STS_steps_to_rad(sts_id, sts_present_position)
-                print("[ID:%03d] PresPos:%d " % (sts_id, sts_present_position))
-            else:
-                print("[ID:%03d] groupSyncRead getdata failed" % sts_id)
-                continue
-            if sts_error != 0:
-                print("%s" % self.sts.getRxPacketError(sts_error))
+    def pick_voxel(self):
+        self.move_manip(angle_steps=MANIP_DOWN0)
+        self.lock_anchor(servo_id=9, lock=True)
+        self.move_manip(angle_steps=MANIP_UP)
 
-        groupSyncRead.clearParam()
-        return cur_q
+    def place_voxel(self, layer: int):
+        assert (layer == -1 or layer == 0), "Layer must be -1 or 0!"
+
+        if layer == -1:
+            angle = MANIP_DOWN0
+        if layer == 0:
+            angle == MANIP_DOWN1
+
+        self.move_manip(angle_steps=angle)
+        self.lock_anchor(servo_id=9, lock=False)
+        self.move_manip(angle_steps=MANIP_UP)
+
+##################################################### MAIN FUNCTIONS END #####################################################
+    def grab_rel_voxel(self, grab=False):
+        """ Grab/release voxel [True/False] with voxel manipulator."""
+        self.move_manip(down=True)
+        self.lock_anchor(servo_id=9, lock=grab)
+        self.move_manip(down=False)
 
     def move_STS_step(self, servo_id=1, steps=2048):
         # Write STServo goal position/moving speed/moving acc
@@ -264,7 +311,20 @@ class Robot:
             if moving==0:
                 break
 
-    def move_STS_rad(self, servo_id=1, rad=np.pi/4):
+    def move_manip(self, angle_steps):
+        """ Move manipulator to given angle in steps. """
+        scs_comm_result, scs_error = self.scs.WritePos(self.scs_manip_ID, angle_steps, SCS_MOVING_TIME, SCS_MOVING_SPEED)
+        if scs_comm_result != COMM_SUCCESS:
+            print("%s" % self.scs.getTxRxResult(scs_comm_result))
+        elif scs_error != 0:
+            print("%s" % self.scs.getRxPacketError(scs_error))
+  
+        sleep(2.5)
+
+    def move_STS_rad(self, servo_id, rad):
+        assert (self.sts_low_limits[servo_id-1] <= rad) and (rad <= self.sts_up_limits[servo_id-1]), \
+        f"Joint configuration {config} out of bounds! Must be between {lower_limits} and {upper_limits}."
+
         steps = 0
         steps = self.STS_rad_to_steps(servo_id, rad)
         # Write STServo goal position/moving speed/moving acc
@@ -292,45 +352,7 @@ class Robot:
             if moving==0:
                 break
 
-    def move_manip(self, down=False):
-        """ Move manipulator up/down [True/False] the anchor with given servo_id """
-        if down:
-            scs_comm_result, scs_error = self.scs.WritePos(self.scs_manip_ID, MANIP_DOWN, SCS_MOVING_TIME, SCS_MOVING_SPEED)
-            if scs_comm_result != COMM_SUCCESS:
-                print("%s" % self.scs.getTxRxResult(scs_comm_result))
-            elif scs_error != 0:
-                print("%s" % self.scs.getRxPacketError(scs_error))
-        else:
-            scs_comm_result, scs_error = self.scs.WritePos(self.scs_manip_ID, MANIP_UP, SCS_MOVING_TIME, SCS_MOVING_SPEED)
-            if scs_comm_result != COMM_SUCCESS:
-                print("%s" % self.scs.getTxRxResult(scs_comm_result))
-            elif scs_error != 0:
-                print("%s" % self.scs.getRxPacketError(scs_error))
-        sleep(5)
-
-    def lock_anchor(self, servo_id, lock=False):
-        """ Function locks/unlocks [True/False] the anchor with given servo_id """
-        assert servo_id in self.scs_anchor_IDs, "Only SCS anchor IDs allowed!"
-
-        if lock:
-            scs_comm_result, scs_error = self.scs.WritePos(servo_id, LOCK_POS, SCS_MOVING_TIME, SCS_MOVING_SPEED)
-            if scs_comm_result != COMM_SUCCESS:
-                print("%s" % self.scs.getTxRxResult(scs_comm_result))
-            elif scs_error != 0:
-                print("%s" % self.scs.getRxPacketError(scs_error))
-        else:
-            scs_comm_result, scs_error = self.scs.WritePos(servo_id, UNLOCK_POS, SCS_MOVING_TIME, SCS_MOVING_SPEED)
-            if scs_comm_result != COMM_SUCCESS:
-                print("%s" % self.scs.getTxRxResult(scs_comm_result))
-            elif scs_error != 0:
-                print("%s" % self.scs.getRxPacketError(scs_error))
-        sleep(1)
-
-    def grab_rel_voxel(self, grab=False):
-        """ Grab/release voxel [True/False] with voxel manipulator."""
-        self.move_manip(down=True)
-        self.lock_anchor(servo_id=9, lock=grab)
-        self.move_manip(down=False)
+    
 
     def step_fk(self, base_pos: np.array) -> np.array:
         l1 = l4 = GRIPPER_HEIGHT
