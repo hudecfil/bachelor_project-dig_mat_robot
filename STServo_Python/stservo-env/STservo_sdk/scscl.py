@@ -83,6 +83,17 @@ class scscl(protocol_packet_handler):
         moving, scs_comm_result, scs_error = self.read1ByteTxRx(scs_id, SCSCL_MOVING)
         return moving, scs_comm_result, scs_error
 
+    def ReadLoad(self, scs_id):
+        scs_present_load, scs_comm_result, scs_error = self.read2ByteTxRx(scs_id, SCSCL_PRESENT_LOAD_L)
+        return scs_present_load, scs_comm_result, scs_error
+
+    def ReadPosLoad(self, scs_id):
+        scs_data, scs_comm_result, scs_error = self.readTxRx(scs_id, SCSCL_PRESENT_POSITION_L, 6)
+        # Address 56, 57 is POSITION; 60, 61 is LOAD
+        scs_pos = self.sts_makeword(scs_data[0], scs_data[1])
+        scs_load = self.sts_makeword(scs_data[4], scs_data[5])
+        return scs_pos, scs_load, scs_comm_result, scs_error
+
     def SyncWritePos(self, scs_id, position, time, speed):
         txpacket = [self.scs_lobyte(position), self.scs_hibyte(position), self.scs_lobyte(time), self.scs_hibyte(time), self.scs_lobyte(speed), self.scs_hibyte(speed)]
         return self.groupSyncWrite.addParam(scs_id, txpacket)

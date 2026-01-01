@@ -10,15 +10,6 @@ class RobotClient:
         self.robot = robot
         print("Connected to the server, ready for commands.")
 
-    def receive_command(self):
-        while b'\n' not in self.buffer:
-            data = self.sock.recv(1024)
-            if not data:
-                return None
-            self.buffer += data
-        line, self.buffer = self.buffer.split(b'\n', 1)
-        return json.loads(line.decode('utf-8'))
-
     def listen(self):
         buffer = ""
         while True:

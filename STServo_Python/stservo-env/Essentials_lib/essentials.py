@@ -3,11 +3,9 @@ import os
 import numpy as np
 from time import sleep
 
-core_path = os.path.join(os.path.dirname(__file__), 'core')
-sys.path.insert(0, core_path)
-from se2 import SE2
-from so2 import SO2
-from geometry import circle_circle_intersection
+import csv
+import time
+from datetime import datetime
 
 sys.path.append("..")
 from STservo_sdk import *
@@ -15,21 +13,17 @@ from STservo_sdk import *
 STS_MOVING_SPEED = 1500 # Default: 2400
 STS_MOVING_ACC = 50
 SCS_MOVING_TIME = 0
-SCS_MOVING_SPEED = 500
+SCS_MOVING_SPEED = 500 # 500
 
 LOCK_POS = 35
 UNLOCK_POS = 180
 
-MANIP_DOWN0 = 55
+MANIP_PICK = 55 # reaches over the right angle, when picking voxel to be sure that the voxel clicks into the manipulator 
+MANIP_DOWN0 = 85
 MANIP_DOWN1 = 565
-MANIP_UP = 595
+MANIP_UP = 575
 
-# STS zero position [steps]
-STS1_ZERO = 2100
-STS2_ZERO = 2050
-STS3_ZERO = 2100
-STS4_ZERO = 2175
-STS5_ZERO = 2050 # 4096/2 = 2048 ==> correction +2 steps
+STS_ZERO_POINT = 2048
 
 # STS limits [rad]
 STS15_UP_LIM = np.pi
@@ -42,10 +36,26 @@ STS3_LOW_LIM = -(8*np.pi)/9 # Approx. 8deg from position when grippers on the ne
 # Robot link parameters [m]
 LEG_LENGTH = 0.179
 GRIPPER_HEIGHT = 0.0568
-BASE_Z_POS_OFF = 0.0898
+BASE_Z_POS_OFF = 0.0878
 
 # Voxel parameters [m]
 VOX_LATTICE_PITCH = 0.090
+
+# Anchor actuators load thresholds
+ID6_MIN_LOCK_LOAD = 222 #241
+ID6_MAX_LOCK_LOAD = 309 #328
+ID6_JAM_THRESHOLD = 591 #615
+ID6_TRAVEL_EFFORT_MAX_AVG = 298 #296
+
+ID7_MIN_LOCK_LOAD = 208 #241
+ID7_MAX_LOCK_LOAD = 296 #328
+ID7_JAM_THRESHOLD = 636 #615
+ID7_TRAVEL_EFFORT_MAX_AVG = 284 #296
+
+
+
+# Split during LOCK into TRAVEL and ENGAGEMENT zones at 80 steps
+ZONE_SPLIT_POS = 80 
 
 class Robot:
     def __init__(self, baudrate = 1000000, deviceName = "/dev/ttyAMA0"):
@@ -58,14 +68,23 @@ class Robot:
         self.scs_anchor_IDs = [6,7,9]
         self.scs_manip_ID = 8
         self.num_sts = len(self.sts_IDs)
-        self.sts_zero_points = [STS1_ZERO, STS2_ZERO, STS3_ZERO, STS4_ZERO, STS5_ZERO]
         self.sts_up_limits = np.array([STS15_UP_LIM, STS24_UP_LIM, STS3_UP_LIM, STS24_UP_LIM, STS15_UP_LIM])
         self.sts_low_limits = np.array([STS15_LOW_LIM, STS24_LOW_LIM, STS3_LOW_LIM, STS24_LOW_LIM, STS15_LOW_LIM])
         self.link_parameters = np.array([LEG_LENGTH, LEG_LENGTH, BASE_Z_POS_OFF])
-        self.rear_grip_pose = SE2(translation=[0.0, 0.0], rotation=SO2(-np.pi/2)) # in reference to the front_gripper_base_pose
-        self.rear_grip_base_pose = SE2(translation=[0.0, 0.0], rotation=SO2(np.pi/2))
-        self.front_grip_pose = SE2(translation=[VOX_LATTICE_PITCH, 0.0], rotation=SO2(-np.pi/2)) # in reference to the rear_gripper_base_pose
-        self.front_grip_base_pose = SE2(translation=[VOX_LATTICE_PITCH, 0.0], rotation=SO2(np.pi/2))
+        self.calibrations = {
+            6: {
+                "MIN_LOCK_LOAD": ID6_MIN_LOCK_LOAD,
+                "MAX_LOCK_LOAD": ID6_MAX_LOCK_LOAD,
+                "JAM_THRESHOLD": ID6_JAM_THRESHOLD,
+                "TRAVEL_EFFORT_MAX_AVG": ID6_TRAVEL_EFFORT_MAX_AVG
+            },
+            7: {
+                "MIN_LOCK_LOAD": ID7_MIN_LOCK_LOAD,
+                "MAX_LOCK_LOAD": ID7_MAX_LOCK_LOAD,
+                "JAM_THRESHOLD": ID7_JAM_THRESHOLD,
+                "TRAVEL_EFFORT_MAX_AVG": ID7_TRAVEL_EFFORT_MAX_AVG
+            }
+        }
 
         # Open port
         if self.portHandler.openPort():
@@ -96,19 +115,13 @@ class Robot:
         rad = np.arctan2(np.sin(rad), np.cos(rad))
 
         # Retrieve the correct zero point for the servo
-        zero_point = self.sts_zero_points[servo_id - 1]
+        zero_point = STS_ZERO_POINT
 
         # Convert radians to steps
-        # if rear_gripper: # If kinematics calculated from the rear gripper base
         if servo_id in [1,4,5]:
             steps = int(zero_point - (rad * (4096 / (2*np.pi))))
         else:
             steps = int(zero_point + (rad * (4096 / (2*np.pi))))
-        # else: # If kinematics calculated from the front gripper base
-        #     if servo_id in [2,3,5]:
-        #         steps = int(zero_point - (rad * (4096 / (2*np.pi))))
-        #     else:
-        #         steps = int(zero_point + (rad * (4096 / (2*np.pi))))
 
         # Debugging output
         #print(f"Servo {servo_id} | Input rad: {rad:.4f} | Zero: {zero_point} | Steps: {steps}")
@@ -119,18 +132,58 @@ class Robot:
     def STS_steps_to_rad(self, servo_id, steps) -> float:
         """ Converts STS travel steps to radians.
 
-            - Mid-point zero reference from self.sts_zero_points
-            - CCW as positive rotation
-            - Angle wrapped to range [-π, π] radians
+            - Mid-point zero reference 2048 steps
+            - Matches the logic of STS_rad_to_steps
         """
-        zero_point = self.sts_zero_points[servo_id-1]
+        zero_point = STS_ZERO_POINT
 
-        if servo_id == 4:
-            rad = (zero_point-steps)*((2*np.pi)/4096)
+        # Scaling factor
+        scale = (2 * np.pi) / 4096
+
+        if servo_id in [1, 4, 5]:
+            rad = (zero_point - steps) * scale
         else:
-            rad = (steps-zero_point)*((2*np.pi)/4096)
+            rad = (steps - zero_point) * scale
+
+        # Wrap angle into [-pi, pi] interval
+        rad = np.arctan2(np.sin(rad), np.cos(rad))
 
         return rad
+
+##################################################### MAIN FUNCTIONS #####################################################
+    def move_to_q(self, q: np.array):
+        """ Move STS servos to the given configuration q .
+
+            Args:
+                q: configuration vector [rad]
+        """
+        
+        # Check if input q has the right size and the config q lies within the joint limits
+        assert q.shape == (5,), "Length of the vector q must be 5!"
+        assert np.all((self.sts_low_limits <= q) & (q <= self.sts_up_limits)), \
+        f"Joint configuration {config} out of bounds! Must be between {lower_limits} and {upper_limits}."
+
+        # Map q from rad to steps
+        q = [self.STS_rad_to_steps(i+1, q_i) for i, q_i in enumerate(q)]
+        print("q_steps: ", q)
+
+        for sts_id in self.sts_IDs:
+            # Add STServo#1~10 goal position\moving speed\moving accc value to the Syncwrite parameter storage
+            sts_addparam_result = self.sts.SyncWritePosEx(sts_id, q[sts_id-1], STS_MOVING_SPEED,
+                                                               STS_MOVING_ACC)
+            if sts_addparam_result != True:
+                print("[ID:%03d] groupSyncWrite addparam failed" % sts_id)
+
+        # Syncwrite goal position
+        sts_comm_result = self.sts.groupSyncWrite.txPacket()
+        if sts_comm_result != COMM_SUCCESS:
+            print("%s" % self.sts.getTxRxResult(sts_comm_result))
+
+        sleep(0.05) # Sets secure movement speed
+
+        # Clear syncwrite parameter storage
+        self.sts.groupSyncWrite.clearParam()
+
 
     def get_q(self):
         cur_q = np.zeros(self.num_sts)
@@ -163,82 +216,6 @@ class Robot:
 
         groupSyncRead.clearParam()
         return cur_q
-
-##################################################### MAIN FUNCTIONS #####################################################
-    def move_to_q(self, q: np.array):
-        """ Move STS servos to the given configuration q .
-
-            Args:
-                q: configuration vector [rad]
-        """
-        
-        # Check if input q has the right size and the config q lies within the joint limits
-        assert q.shape == (5,), "Length of the vector q must be 5!"
-        assert np.all((self.sts_low_limits <= q) & (q <= self.sts_up_limits)), \
-        f"Joint configuration {config} out of bounds! Must be between {lower_limits} and {upper_limits}."
-
-        # Map q from rad to steps
-        q = [self.STS_rad_to_steps(i+1, q_i) for i, q_i in enumerate(q)]
-        print("q_steps: ", q)
-
-        for sts_id in self.sts_IDs:
-            # Add STServo#1~10 goal position\moving speed\moving accc value to the Syncwrite parameter storage
-            sts_addparam_result = self.sts.SyncWritePosEx(sts_id, q[sts_id-1], STS_MOVING_SPEED,
-                                                               STS_MOVING_ACC)
-            if sts_addparam_result != True:
-                print("[ID:%03d] groupSyncWrite addparam failed" % sts_id)
-
-        # Syncwrite goal position
-        sts_comm_result = self.sts.groupSyncWrite.txPacket()
-        if sts_comm_result != COMM_SUCCESS:
-            print("%s" % self.sts.getTxRxResult(sts_comm_result))
-
-        sleep(0.05)  # wait for servo status moving=1
-
-        # Clear syncwrite parameter storage
-        self.sts.groupSyncWrite.clearParam()
-
-
-        groupSyncRead = GroupSyncRead(self.sts, STS_PRESENT_POSITION_L, 4)
-
-        while 1:
-            # Add parameter storage for STServos
-            for sts_id in self.sts_IDs:
-                sts_addparam_result = groupSyncRead.addParam(sts_id)
-                if sts_addparam_result != True:
-                    print("[ID:%03d] groupSyncRead addparam failed" % sts_id)
-
-            sts_comm_result = groupSyncRead.txRxPacket()
-            if sts_comm_result != COMM_SUCCESS:
-                print("%s" % self.sts.getTxRxResult(sts_comm_result))
-
-            sts_last_moving = 0
-            for sts_id in self.sts_IDs:
-                # Check if groupsyncread data of STServo#1~10 is available
-                sts_data_result, sts_error = groupSyncRead.isAvailable(sts_id, STS_PRESENT_POSITION_L, self.num_sts)
-                if sts_data_result == True:
-                    # Get STServo#sts_id present position, speed, moving value
-                    sts_present_position = groupSyncRead.getData(sts_id, STS_PRESENT_POSITION_L, 2)
-                    sts_present_speed = groupSyncRead.getData(sts_id, STS_PRESENT_SPEED_L, 2)
-                    sts_present_moving = groupSyncRead.getData(sts_id, STS_MOVING, 1)
-                    # print(sts_present_moving)
-                    print("[ID:%03d] PresPos:%d PresSpd:%d" % (
-                    sts_id, sts_present_position, self.sts.sts_tohost(sts_present_speed, 15)))
-                    if sts_present_moving == 1:
-                        sts_last_moving = 1
-                else:
-                    print("[ID:%03d] groupSyncRead getdata failed" % sts_id)
-                    continue
-                if sts_error:
-                    print(self.sts.getRxPacketError(sts_error))
-            print("---")
-
-            # Clear syncread parameter storage
-            groupSyncRead.clearParam()
-            if sts_last_moving == 0:
-                break
-
-        sleep(0.005)
         
 
     def lock_anchor(self, servo_id, lock=False):
@@ -259,12 +236,172 @@ class Robot:
                 print("%s" % self.scs.getTxRxResult(scs_comm_result))
             elif scs_error != 0:
                 print("%s" % self.scs.getRxPacketError(scs_error))
+            
         sleep(0.5)
 
+    
+    def lock_anchor_fb(self, servo_id, lock=False):
+        """ Function locks/unlocks [True/False] the anchor with given servo_id """
+
+        assert servo_id in self.scs_anchor_IDs, "Only SCS anchor IDs allowed!"
+
+        cal = self.calibrations.get(servo_id)
+        if not cal:
+            print(f"Error: No calibration data for ID {servo_id}")
+            return False
+
+        sleep(0.5)
+        if lock:
+            scs_comm_result, scs_error = self.scs.WritePos(servo_id, LOCK_POS, SCS_MOVING_TIME, SCS_MOVING_SPEED)
+            if scs_comm_result != COMM_SUCCESS:
+                print("%s" % self.scs.getTxRxResult(scs_comm_result))
+            elif scs_error != 0:
+                print("%s" % self.scs.getRxPacketError(scs_error))
+        else:
+            scs_comm_result, scs_error = self.scs.WritePos(servo_id, UNLOCK_POS, SCS_MOVING_TIME, SCS_MOVING_SPEED)
+            if scs_comm_result != COMM_SUCCESS:
+                print("%s" % self.scs.getTxRxResult(scs_comm_result))
+            elif scs_error != 0:
+                print("%s" % self.scs.getRxPacketError(scs_error))
+
+        # Wait for the moving flag moving=1:
+        sleep(0.05)
+
+        # If UNLOCKING we don't monitor feedback
+        if not lock:
+            sleep(0.5)
+            return True
+
+        data_log = []
+        start_time = time.time()
+
+        # Position-Load feedback monitoring loop
+        moving = 1
+        while moving:
+            scs_present_pos, scs_present_load, scs_comm_result, scs_error = self.scs.ReadPosLoad(servo_id)
+
+            if scs_comm_result != COMM_SUCCESS:
+                print(self.scs.getTxRxResult(scs_comm_result))
+            else:
+                elapsed = time.time() - start_time
+                # Get absolute load of the servo movement – the direction of load is omitted
+                abs_load = scs_present_load if scs_present_load < 1024 else scs_present_load - 1024
+                data_log.append([round(elapsed, 4), scs_present_pos, abs_load])
+                
+                # Instant Safety Stop in the case of HARD JAM
+                if abs_load > cal["JAM_THRESHOLD"]:
+                    print(f"!!! EMERGENCY STOP: Jam detected at Pos {scs_present_pos} (Load {abs_load}) !!!")
+                    # Return the servo to the UNLOCK_POS
+                    scs_comm_result, scs_error = self.scs.WritePos(servo_id, UNLOCK_POS, SCS_MOVING_TIME, SCS_MOVING_SPEED)
+                    if scs_comm_result != COMM_SUCCESS:
+                        print("%s" % self.scs.getTxRxResult(scs_comm_result))
+                    elif scs_error != 0:
+                        print("%s" % self.scs.getRxPacketError(scs_error))
+                    return False
+
+            if scs_error != 0:
+                print(self.scs.getRxPacketError(scs_error))
+
+            if elapsed > 2.0:
+                break
+
+            # Check moving status
+            moving, _, _ = self.scs.ReadMoving(servo_id)    
+            sleep(0.005)
+
+        # Analyze the LOCKING sequence
+        travel_loads = [d[2] for d in data_log if d[1] > ZONE_SPLIT_POS]
+        engagement_loads = [d[2] for d in data_log if d[1] <= ZONE_SPLIT_POS]
+
+        # 1. Check if the anchor didn't scrape on the voxel lattice (isn't misaligned)
+        # avg_travel = 0
+        if travel_loads:
+            avg_travel = sum(travel_loads) / len(travel_loads)
+            print(f"Avg_travel: {avg_travel}")
+            if avg_travel > cal["TRAVEL_EFFORT_MAX_AVG"]:
+                print(f"FAILED: High friction during travel ({int(avg_travel)})")
+                return False
+
+        # 2. Check if the anchor is successfully LOCKed
+        # –> if the load in the engagement zone isn't too low (in the air lock), or too high (jam)
+        if engagement_loads:
+            peak_lock = max(engagement_loads)
+            if peak_lock < cal["MIN_LOCK_LOAD"]:
+                print(f"FAILED: Air lock - No engagement detected ({peak_lock})")
+                return False
+            if peak_lock > cal["MAX_LOCK_LOAD"]:
+                # Note: We already checked JAM_LIMIT, so this is just "Tight"
+                print(f"SUCCESS: Tight lock confirmed ({peak_lock})")
+                return True
+        
+            print(f"SUCCESS: Lock confirmed ({peak_lock})")
+            return True
+
+        print("FAILED: No engagement data recorded.")
+        return False
+            
+
+    def log_lock_event(self, servo_id, label="log"):
+        assert servo_id in self.scs_anchor_IDs, "Only SCS anchor IDs allowed!"
+
+        # Generate timestamp for the filename
+        timestamp = datetime.now().strftime("%d%m%y_%H%M%S")
+        filename = f"calibration_logs/{label}_{timestamp}.csv"
+
+        data_log = []
+        start_time = time.time()
+
+        print(f"Recording ID {servo_id} to {filename}...")
+
+        # Command servo to lock
+        scs_comm_result, scs_error = self.scs.WritePos(servo_id, LOCK_POS, SCS_MOVING_TIME, SCS_MOVING_SPEED)
+        if scs_comm_result != COMM_SUCCESS:
+            print("%s" % self.scs.getTxRxResult(scs_comm_result))
+        elif scs_error != 0:
+            print("%s" % self.scs.getRxPacketError(scs_error))
+
+        # Wait for movement to actually start (avoids the "1 data point" exit)
+        start_time = time.time()
+        for _ in range(5): # Check for 100ms
+            moving, _, _ = self.scs.ReadMoving(servo_id)
+            if moving: break
+            time.sleep(0.005)
+
+        moving = 1
+        while moving:
+            scs_present_pos, scs_present_load, scs_comm_result, scs_error = self.scs.ReadPosLoad(servo_id)
+
+            if scs_comm_result != COMM_SUCCESS:
+                print(self.scs.getTxRxResult(scs_comm_result))
+            else:
+                elapsed = time.time() - start_time
+                # Get absolute load of the servo movement – the direction of load is omitted
+                abs_load = scs_present_load if scs_present_load < 1024 else scs_present_load - 1024
+                data_log.append([round(elapsed, 4), scs_present_pos, abs_load])
+                # print("[ID:{servo_id:03d}] Pos:{scs_present_pos} AbsLoad:{abs_load}")
+            if scs_error != 0:
+                print(self.scs.getRxPacketError(scs_error))
+
+            # Check movement status
+            moving, _, _ = self.scs.ReadMoving(servo_id)    
+            sleep(0.005)
+
+        # Save datalog file
+        with open(filename, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["Timestamp", "Position", "Load"])
+            writer.writerows(data_log)
+
+        print(f"File saved: {filename}")
+
+
+
+        
     def pick_voxel(self):
-        self.move_manip(angle_steps=MANIP_DOWN0)
+        self.move_manip(angle_steps=MANIP_PICK)
         self.lock_anchor(servo_id=9, lock=True)
         self.move_manip(angle_steps=MANIP_UP)
+
 
     def place_voxel(self, layer: int):
         assert (layer == -1 or layer == 0), "Layer must be -1 or 0!"
@@ -279,6 +416,7 @@ class Robot:
         self.move_manip(angle_steps=MANIP_UP)
 
 ##################################################### MAIN FUNCTIONS END #####################################################
+
     def grab_rel_voxel(self, grab=False):
         """ Grab/release voxel [True/False] with voxel manipulator."""
         self.move_manip(down=True)
@@ -351,169 +489,6 @@ class Robot:
 
             if moving==0:
                 break
-
-    
-
-    def step_fk(self, base_pos: np.array) -> np.array:
-        l1 = l4 = GRIPPER_HEIGHT
-        l2 = l3 = LEG_LENGTH
-        q_wrapped = self.get_q()
-        q_unwrapped = np.unwrap(q_wrapped)
-        theta_1, theta_2, theta_3, theta_4, theta_5 = q_unwrapped
-
-        x_ee = base_pos[0] + l2*np.sin(theta_2) + l3*np.sin(theta_2 + theta_3) + l4*np.sin(theta_2 + theta_3 + theta_4)
-        y_ee = base_pos[1]
-        z_ee = base_pos[2] + l2*np.cos(theta_2) + l3*np.cos(theta_2 + theta_3) + l4*np.cos(theta_2 + theta_3 + theta_4)
-
-        ee_pos = np.array([x_ee, y_ee, z_ee])
-        return ee_pos
-
-    def step_ik_analytical(self, base_pose: SE2, flange_pose_desired: SE2) -> list[np.ndarray]:
-        """Compute IK analytically, return all solutions for joint limits being
-        from -pi to pi for revolute joints -inf to inf for prismatic joints."""
-
-        def normalize_angle(angle: float) -> float:
-            """Normalize angle to interval of [-pi, pi]"""
-            return (angle + np.pi) % (2 * np.pi) - np.pi
-            #return np.arctan2(np.sin(angle), np.cos(angle))
-
-        all_solutions = []
-
-        # Get flange position, orientation and link parameters
-        fl_des_pos = flange_pose_desired.translation
-        fl_des_orient = flange_pose_desired.rotation.angle
-        # Get base (j0) position, orientation
-        j0_pos = base_pose.translation + [0, BASE_Z_POS_OFF]
-        j0_orient = base_pose.rotation.angle
-
-        l = np.copy(self.link_parameters)
-
-        # Calculate position of j2 joint from flange position
-        j2_pos = flange_pose_desired.translation - (l[2] * np.array([np.cos(fl_des_orient), np.sin(fl_des_orient)]))
-
-        # Calculate intersection between circles with centers j2, j0 and radius l[1], l[0]
-        j1_pos = circle_circle_intersection(j2_pos, l[1], j0_pos, l[0])
-
-        # Calculate joint configurations for both solutions of intersection
-        for i, j1 in enumerate(j1_pos):
-            q1 = 0
-            q2 = np.arctan2(j1[1] - j0_pos[1], j1[0] - j0_pos[0]) - j0_orient
-            q3 = np.arctan2(j2_pos[1] - j1[1], j2_pos[0] - j1[0]) - q2 - j0_orient
-            q4 = fl_des_orient - q2 - q3 - j0_orient
-            q5 = 0
-
-            q = np.array([q1, q2, q3, q4, q5])
-            # Normalize angles
-            q = np.array([normalize_angle(q_i) for q_i in q])
-            all_solutions.append(q)
-
-        return all_solutions
-
-    def step_front_gripper(self, forward = True):
-        def plan_trajectory(num_points=50):
-            trajectory = []
-            if forward:
-                x_start = self.front_grip_pose.translation[0]
-                x_end = self.front_grip_pose.translation[0] + VOX_LATTICE_PITCH
-            else:
-                x_start = self.front_grip_pose.translation[0] - VOX_LATTICE_PITCH
-                x_end = self.front_grip_pose.translation[0]
-
-            x_vals = np.linspace(x_start, x_end, num_points)
-            a = 49.382716
-            b = 4.444444
-            for x in x_vals:
-                z = -a*((x-x_start)**2) + b*(x-x_start)
-                print("Point: ", (x,z))
-                cur_transform = SE2(translation = [x,z], rotation = SO2(-np.pi/2) )
-                all_q = self.step_ik_analytical(self.rear_grip_base_pose, cur_transform)
-                cur_q = all_q[0]
-                if np.all((self.sts_low_limits <= cur_q) & (cur_q <= self.sts_up_limits)): trajectory.append(cur_q)
-
-            return trajectory
-
-        trajectory = plan_trajectory()
-
-        if not forward: trajectory = trajectory[::-1]
-
-        # Unlock front gripper
-        self.lock_anchor(7, False)
-        # Follow the trajectory with the front gripper
-        print("# trajectory waypoints: ", len(trajectory))
-        assert len(trajectory) == 50, "IK computation failed, didn't get all 50 trajectory waypoints!"
-        for point in trajectory:
-            print("q_rad: ", point)
-            self.move_to_q(point)
-        sleep(0.5)
-        # Lock front gripper
-        self.lock_anchor(7, True)
-
-        if forward:
-            self.front_grip_pose.translation[0] += VOX_LATTICE_PITCH
-            self.front_grip_base_pose.translation[0] += VOX_LATTICE_PITCH
-        else:
-            self.front_grip_pose.translation[0] -= VOX_LATTICE_PITCH
-            self.front_grip_base_pose.translation[0] -= VOX_LATTICE_PITCH
-
-        print("Current FG-base position: ", self.front_grip_base_pose)
-        print("Current FG position: ", self.front_grip_pose)
-    
-    def step_rear_gripper(self, forward = True):
-        def plan_trajectory(num_points=50):
-            trajectory = []
-            if forward:
-                x_start = self.rear_grip_pose.translation[0]
-                x_end = self.rear_grip_pose.translation[0] + VOX_LATTICE_PITCH
-            else:
-                x_start = self.rear_grip_pose.translation[0] - VOX_LATTICE_PITCH
-                x_end = self.rear_grip_pose.translation[0]
-
-            x_vals = np.linspace(x_start, x_end, num_points)
-            a = 49.382716
-            b = 4.444444
-            for x in x_vals:
-                z = -a*((x-x_start)**2) + b*(x-x_start)
-                print("Point: ", (x,z))
-                cur_transform = SE2(translation = [x,z], rotation = SO2(-np.pi/2) )
-                all_q = self.step_ik_analytical(self.front_grip_base_pose, cur_transform)
-                cur_q = -all_q[1][::-1]
-                if np.all((self.sts_low_limits <= cur_q) & (cur_q <= self.sts_up_limits)): trajectory.append(cur_q)
-
-            return trajectory
-
-        trajectory = plan_trajectory()
-
-        if not forward: trajectory = trajectory[::-1]
-
-        # Unlock rear gripper
-        self.lock_anchor(6, False)
-        # Follow the trajectory with the rear gripper
-        print("# trajectory waypoints: ", len(trajectory))
-        assert len(trajectory) == 50, "IK computation failed, didn't get all 50 trajectory waypoints!"
-        for point in trajectory:
-            print("q_rad: ", point)
-            self.move_to_q(point)
-        sleep(0.5)
-        # Lock rear gripper
-        self.lock_anchor(6, True)
-
-        if forward:
-            self.rear_grip_pose.translation[0] += VOX_LATTICE_PITCH
-            self.rear_grip_base_pose.translation[0] += VOX_LATTICE_PITCH
-        else:
-            self.rear_grip_pose.translation[0] -= VOX_LATTICE_PITCH
-            self.rear_grip_base_pose.translation[0] -= VOX_LATTICE_PITCH
-
-        print("Current RG-base position: ", self.rear_grip_base_pose)
-        print("Current RG position: ", self.rear_grip_pose)
-
-    def step(self, forward=True):
-        if forward:
-            self.step_front_gripper(forward)
-            self.step_rear_gripper(forward)
-        else:
-            self.step_rear_gripper(forward)
-            self.step_front_gripper(forward)
 
         
             
