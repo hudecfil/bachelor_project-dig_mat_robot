@@ -21,13 +21,9 @@ sys.path.append("..")
 from STservo_sdk import *                   # Uses STServo SDK library
 
 # Default setting
-sts_ID                  = 1                
+STS_ID                  = 1                # STServo ID : 1
 BAUDRATE                = 1000000        # STServo default baudrate : 1000000
 DEVICENAME              = "/dev/ttyAMA0"    # Use /dev/serial0 for GPIO serial communication on Raspberry Pi
-sts_offset = 140
-
-# ID1: offset = 18
-# ID2: offset = 110
 
 # Initialize PortHandler instance
 # Set the port path
@@ -55,25 +51,28 @@ else:
     getch()
     quit()
 
-#---------------------------Change servo ID--------------------------
+print("STS ID:", STS_ID)
+
+#---------------------------Change servo I coefficient--------------------------
 # Unlock EPROM
-result, error = packetHandler.unLockEprom(sts_ID)
+result, error = packetHandler.unLockEprom(STS_ID)
 print(f"Unlock EEPROM Result: {packetHandler.getTxRxResult(result)}")
 if error:
     print(f"Error: {packetHandler.getRxPacketError(error)}")
 
-# Change SERVO OFFSET
-result, error = packetHandler.write2ByteTxRx(sts_ID, STS_OFS_L, sts_offset)
-print(f"Change Offset Result: {packetHandler.getTxRxResult(result)}")
+# Rear SERVO P coefficient
+OFS_read, result, error = packetHandler.read2ByteTxRx(STS_ID, STS_OFS_L)
+print(f"Read OFFSET Result: {packetHandler.getTxRxResult(result)}")
+print("OFS = ", OFS_read)
 if error:
     print(f"Error: {packetHandler.getRxPacketError(error)}")
 
 # Lock EPROM
-result, error = packetHandler.LockEprom(sts_ID)
+result, error = packetHandler.LockEprom(STS_ID)
 print(f"Lock EEPROM Result: {packetHandler.getTxRxResult(result)}")
 if error:
     print(f"Error: {packetHandler.getRxPacketError(error)}")
-#---------------------------Change servo ID--------------------------
+#---------------------------Change servo I coefficient--------------------------
 
 # Close port
 portHandler.closePort()

@@ -67,11 +67,7 @@ class RobotClient:
                 elif command['gripper'] == 'rear':
                     id = 6
 
-                # self.robot.lock_anchor(servo_id=id, lock=True)
-
-                fb = self.robot.lock_anchor_fb(servo_id=id, lock=True)
-                if not fb:
-                    return 'stop'
+                self.robot.lock_anchor(servo_id=id, lock=True)
 
             case 'lock_fb':
                 id = 0
