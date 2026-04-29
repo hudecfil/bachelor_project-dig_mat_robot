@@ -21,10 +21,10 @@ sys.path.append("..")
 from STservo_sdk import *                   # Uses STServo SDK library
 
 # Default setting
-sts_ID                  = 2                
+sts_ID                  = 1                
 BAUDRATE                = 1000000        # STServo default baudrate : 1000000
 DEVICENAME              = "/dev/ttyAMA0"    # Use /dev/serial0 for GPIO serial communication on Raspberry Pi
-sts_offset_l = 2
+sts_offset_l = 18
 
 # Initialize PortHandler instance
 # Set the port path

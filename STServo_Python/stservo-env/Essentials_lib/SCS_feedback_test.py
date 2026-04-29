@@ -8,9 +8,12 @@ robot = Robot()
 
 # robot.lock_anchor(7, False)
 
+<<<<<<< HEAD
 
 
 
+=======
+>>>>>>> d8ef354 (feedback testing, lowered the ID7_MIN_LOCK_LOAD)
 # unlock the grippers
 robot.lock_anchor(6, False)
 robot.lock_anchor(7, False)

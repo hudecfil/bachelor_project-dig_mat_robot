@@ -6,6 +6,9 @@ from time import sleep
 import csv
 import time
 from datetime import datetime
+import csv
+import time
+from datetime import datetime
 
 sys.path.append("..")
 from STservo_sdk import *
@@ -14,15 +17,20 @@ STS_MOVING_SPEED = 1500 # Default: 2400
 STS_MOVING_ACC = 50
 SCS_MOVING_TIME = 0
 SCS_MOVING_SPEED = 500 # 500
+SCS_MOVING_SPEED = 500 # 500
 
 LOCK_POS = 35
 UNLOCK_POS = 180
 
 MANIP_PICK = 55 # reaches over the right angle, when picking voxel to be sure that the voxel clicks into the manipulator 
 MANIP_DOWN0 = 85
+MANIP_PICK = 55 # reaches over the right angle, when picking voxel to be sure that the voxel clicks into the manipulator 
+MANIP_DOWN0 = 85
 MANIP_DOWN1 = 565
 MANIP_UP = 575
+MANIP_UP = 575
 
+STS_ZERO_POINT = 2048
 STS_ZERO_POINT = 2048
 
 # STS limits [rad]
@@ -37,6 +45,7 @@ STS3_LOW_LIM = -(8*np.pi)/9 # Approx. 8deg from position when grippers on the ne
 LEG_LENGTH = 0.179
 GRIPPER_HEIGHT = 0.0568
 BASE_Z_POS_OFF = 0.0878
+BASE_Z_POS_OFF = 0.0878
 
 # Voxel parameters [m]
 VOX_LATTICE_PITCH = 0.090
@@ -47,12 +56,10 @@ ID6_MAX_LOCK_LOAD = 309 #328
 ID6_JAM_THRESHOLD = 591 #615
 ID6_TRAVEL_EFFORT_MAX_AVG = 298 #296
 
-ID7_MIN_LOCK_LOAD = 208 #241
+ID7_MIN_LOCK_LOAD = 200 #208
 ID7_MAX_LOCK_LOAD = 296 #328
 ID7_JAM_THRESHOLD = 636 #615
 ID7_TRAVEL_EFFORT_MAX_AVG = 284 #296
-
-
 
 # Split during LOCK into TRAVEL and ENGAGEMENT zones at 80 steps
 ZONE_SPLIT_POS = 80 
@@ -71,6 +78,20 @@ class Robot:
         self.sts_up_limits = np.array([STS15_UP_LIM, STS24_UP_LIM, STS3_UP_LIM, STS24_UP_LIM, STS15_UP_LIM])
         self.sts_low_limits = np.array([STS15_LOW_LIM, STS24_LOW_LIM, STS3_LOW_LIM, STS24_LOW_LIM, STS15_LOW_LIM])
         self.link_parameters = np.array([LEG_LENGTH, LEG_LENGTH, BASE_Z_POS_OFF])
+        self.calibrations = {
+            6: {
+                "MIN_LOCK_LOAD": ID6_MIN_LOCK_LOAD,
+                "MAX_LOCK_LOAD": ID6_MAX_LOCK_LOAD,
+                "JAM_THRESHOLD": ID6_JAM_THRESHOLD,
+                "TRAVEL_EFFORT_MAX_AVG": ID6_TRAVEL_EFFORT_MAX_AVG
+            },
+            7: {
+                "MIN_LOCK_LOAD": ID7_MIN_LOCK_LOAD,
+                "MAX_LOCK_LOAD": ID7_MAX_LOCK_LOAD,
+                "JAM_THRESHOLD": ID7_JAM_THRESHOLD,
+                "TRAVEL_EFFORT_MAX_AVG": ID7_TRAVEL_EFFORT_MAX_AVG
+            }
+        }
         self.calibrations = {
             6: {
                 "MIN_LOCK_LOAD": ID6_MIN_LOCK_LOAD,
@@ -116,6 +137,7 @@ class Robot:
 
         # Retrieve the correct zero point for the servo
         zero_point = STS_ZERO_POINT
+        zero_point = STS_ZERO_POINT
 
         # Convert radians to steps
         if servo_id in [1,4,5]:
@@ -134,7 +156,13 @@ class Robot:
 
             - Mid-point zero reference 2048 steps
             - Matches the logic of STS_rad_to_steps
+            - Mid-point zero reference 2048 steps
+            - Matches the logic of STS_rad_to_steps
         """
+        zero_point = STS_ZERO_POINT
+
+        # Scaling factor
+        scale = (2 * np.pi) / 4096
         zero_point = STS_ZERO_POINT
 
         # Scaling factor
@@ -142,13 +170,54 @@ class Robot:
 
         if servo_id in [1, 4, 5]:
             rad = (zero_point - steps) * scale
+        if servo_id in [1, 4, 5]:
+            rad = (zero_point - steps) * scale
         else:
+            rad = (steps - zero_point) * scale
+
+        # Wrap angle into [-pi, pi] interval
+        rad = np.arctan2(np.sin(rad), np.cos(rad))
             rad = (steps - zero_point) * scale
 
         # Wrap angle into [-pi, pi] interval
         rad = np.arctan2(np.sin(rad), np.cos(rad))
 
         return rad
+
+##################################################### MAIN FUNCTIONS #####################################################
+    def move_to_q(self, q: np.array):
+        """ Move STS servos to the given configuration q .
+
+            Args:
+                q: configuration vector [rad]
+        """
+        
+        # Check if input q has the right size and the config q lies within the joint limits
+        assert q.shape == (5,), "Length of the vector q must be 5!"
+        assert np.all((self.sts_low_limits <= q) & (q <= self.sts_up_limits)), \
+        f"Joint configuration {config} out of bounds! Must be between {lower_limits} and {upper_limits}."
+
+        # Map q from rad to steps
+        q = [self.STS_rad_to_steps(i+1, q_i) for i, q_i in enumerate(q)]
+        print("q_steps: ", q)
+
+        for sts_id in self.sts_IDs:
+            # Add STServo#1~10 goal position\moving speed\moving accc value to the Syncwrite parameter storage
+            sts_addparam_result = self.sts.SyncWritePosEx(sts_id, q[sts_id-1], STS_MOVING_SPEED,
+                                                               STS_MOVING_ACC)
+            if sts_addparam_result != True:
+                print("[ID:%03d] groupSyncWrite addparam failed" % sts_id)
+
+        # Syncwrite goal position
+        sts_comm_result = self.sts.groupSyncWrite.txPacket()
+        if sts_comm_result != COMM_SUCCESS:
+            print("%s" % self.sts.getTxRxResult(sts_comm_result))
+
+        sleep(0.05) # Sets secure movement speed
+
+        # Clear syncwrite parameter storage
+        self.sts.groupSyncWrite.clearParam()
+
 
 ##################################################### MAIN FUNCTIONS #####################################################
     def move_to_q(self, q: np.array):
@@ -237,6 +306,7 @@ class Robot:
             elif scs_error != 0:
                 print("%s" % self.scs.getRxPacketError(scs_error))
             
+            
         sleep(0.5)
 
     
@@ -250,7 +320,7 @@ class Robot:
             print(f"Error: No calibration data for ID {servo_id}")
             return False
 
-        sleep(0.5)
+        sleep(0.2)
         if lock:
             scs_comm_result, scs_error = self.scs.WritePos(servo_id, LOCK_POS, SCS_MOVING_TIME, SCS_MOVING_SPEED)
             if scs_comm_result != COMM_SUCCESS:
@@ -332,9 +402,11 @@ class Robot:
             if peak_lock > cal["MAX_LOCK_LOAD"]:
                 # Note: We already checked JAM_LIMIT, so this is just "Tight"
                 print(f"SUCCESS: Tight lock confirmed ({peak_lock})")
+                sleep(0.5)
                 return True
-        
+            
             print(f"SUCCESS: Lock confirmed ({peak_lock})")
+            sleep(0.5)
             return True
 
         print("FAILED: No engagement data recorded.")
@@ -399,8 +471,10 @@ class Robot:
         
     def pick_voxel(self):
         self.move_manip(angle_steps=MANIP_PICK)
+        self.move_manip(angle_steps=MANIP_PICK)
         self.lock_anchor(servo_id=9, lock=True)
         self.move_manip(angle_steps=MANIP_UP)
+
 
 
     def place_voxel(self, layer: int):
@@ -416,6 +490,7 @@ class Robot:
         self.move_manip(angle_steps=MANIP_UP)
 
 ##################################################### MAIN FUNCTIONS END #####################################################
+
 
     def grab_rel_voxel(self, grab=False):
         """ Grab/release voxel [True/False] with voxel manipulator."""
