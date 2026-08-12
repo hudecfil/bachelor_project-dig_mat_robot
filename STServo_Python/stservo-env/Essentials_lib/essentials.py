@@ -6,9 +6,6 @@ from time import sleep
 import csv
 import time
 from datetime import datetime
-import csv
-import time
-from datetime import datetime
 
 sys.path.append("..")
 from STservo_sdk import *
@@ -17,20 +14,15 @@ STS_MOVING_SPEED = 1500 # Default: 2400
 STS_MOVING_ACC = 50
 SCS_MOVING_TIME = 0
 SCS_MOVING_SPEED = 500 # 500
-SCS_MOVING_SPEED = 500 # 500
 
 LOCK_POS = 35
 UNLOCK_POS = 180
 
 MANIP_PICK = 55 # reaches over the right angle, when picking voxel to be sure that the voxel clicks into the manipulator 
 MANIP_DOWN0 = 85
-MANIP_PICK = 55 # reaches over the right angle, when picking voxel to be sure that the voxel clicks into the manipulator 
-MANIP_DOWN0 = 85
 MANIP_DOWN1 = 565
 MANIP_UP = 575
-MANIP_UP = 575
 
-STS_ZERO_POINT = 2048
 STS_ZERO_POINT = 2048
 
 # STS limits [rad]
@@ -92,20 +84,6 @@ class Robot:
                 "TRAVEL_EFFORT_MAX_AVG": ID7_TRAVEL_EFFORT_MAX_AVG
             }
         }
-        self.calibrations = {
-            6: {
-                "MIN_LOCK_LOAD": ID6_MIN_LOCK_LOAD,
-                "MAX_LOCK_LOAD": ID6_MAX_LOCK_LOAD,
-                "JAM_THRESHOLD": ID6_JAM_THRESHOLD,
-                "TRAVEL_EFFORT_MAX_AVG": ID6_TRAVEL_EFFORT_MAX_AVG
-            },
-            7: {
-                "MIN_LOCK_LOAD": ID7_MIN_LOCK_LOAD,
-                "MAX_LOCK_LOAD": ID7_MAX_LOCK_LOAD,
-                "JAM_THRESHOLD": ID7_JAM_THRESHOLD,
-                "TRAVEL_EFFORT_MAX_AVG": ID7_TRAVEL_EFFORT_MAX_AVG
-            }
-        }
 
         # Open port
         if self.portHandler.openPort():
@@ -137,7 +115,6 @@ class Robot:
 
         # Retrieve the correct zero point for the servo
         zero_point = STS_ZERO_POINT
-        zero_point = STS_ZERO_POINT
 
         # Convert radians to steps
         if servo_id in [1,4,5]:
@@ -156,20 +133,12 @@ class Robot:
 
             - Mid-point zero reference 2048 steps
             - Matches the logic of STS_rad_to_steps
-            - Mid-point zero reference 2048 steps
-            - Matches the logic of STS_rad_to_steps
         """
         zero_point = STS_ZERO_POINT
 
         # Scaling factor
         scale = (2 * np.pi) / 4096
-        zero_point = STS_ZERO_POINT
 
-        # Scaling factor
-        scale = (2 * np.pi) / 4096
-
-        if servo_id in [1, 4, 5]:
-            rad = (zero_point - steps) * scale
         if servo_id in [1, 4, 5]:
             rad = (zero_point - steps) * scale
         else:
@@ -177,47 +146,8 @@ class Robot:
 
         # Wrap angle into [-pi, pi] interval
         rad = np.arctan2(np.sin(rad), np.cos(rad))
-            rad = (steps - zero_point) * scale
-
-        # Wrap angle into [-pi, pi] interval
-        rad = np.arctan2(np.sin(rad), np.cos(rad))
 
         return rad
-
-##################################################### MAIN FUNCTIONS #####################################################
-    def move_to_q(self, q: np.array):
-        """ Move STS servos to the given configuration q .
-
-            Args:
-                q: configuration vector [rad]
-        """
-        
-        # Check if input q has the right size and the config q lies within the joint limits
-        assert q.shape == (5,), "Length of the vector q must be 5!"
-        assert np.all((self.sts_low_limits <= q) & (q <= self.sts_up_limits)), \
-        f"Joint configuration {config} out of bounds! Must be between {lower_limits} and {upper_limits}."
-
-        # Map q from rad to steps
-        q = [self.STS_rad_to_steps(i+1, q_i) for i, q_i in enumerate(q)]
-        print("q_steps: ", q)
-
-        for sts_id in self.sts_IDs:
-            # Add STServo#1~10 goal position\moving speed\moving accc value to the Syncwrite parameter storage
-            sts_addparam_result = self.sts.SyncWritePosEx(sts_id, q[sts_id-1], STS_MOVING_SPEED,
-                                                               STS_MOVING_ACC)
-            if sts_addparam_result != True:
-                print("[ID:%03d] groupSyncWrite addparam failed" % sts_id)
-
-        # Syncwrite goal position
-        sts_comm_result = self.sts.groupSyncWrite.txPacket()
-        if sts_comm_result != COMM_SUCCESS:
-            print("%s" % self.sts.getTxRxResult(sts_comm_result))
-
-        sleep(0.05) # Sets secure movement speed
-
-        # Clear syncwrite parameter storage
-        self.sts.groupSyncWrite.clearParam()
-
 
 ##################################################### MAIN FUNCTIONS #####################################################
     def move_to_q(self, q: np.array):
@@ -467,14 +397,10 @@ class Robot:
         print(f"File saved: {filename}")
 
 
-
-        
     def pick_voxel(self):
-        self.move_manip(angle_steps=MANIP_PICK)
         self.move_manip(angle_steps=MANIP_PICK)
         self.lock_anchor(servo_id=9, lock=True)
         self.move_manip(angle_steps=MANIP_UP)
-
 
 
     def place_voxel(self, layer: int):
@@ -488,6 +414,13 @@ class Robot:
         self.move_manip(angle_steps=angle)
         self.lock_anchor(servo_id=9, lock=False)
         self.move_manip(angle_steps=MANIP_UP)
+
+    def home_robot(self):
+        # Set the robot actuators to the home pose
+        self.lock_anchor(6, True)
+        self.lock_anchor(7, True)
+        self.move_manip(angle_steps=MANIP_UP)
+        self.lock_anchor(9, False)
 
 ##################################################### MAIN FUNCTIONS END #####################################################
 

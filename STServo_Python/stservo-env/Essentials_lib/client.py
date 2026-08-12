@@ -4,21 +4,11 @@ from essentials import *
 
 class RobotClient:
     def __init__(self, robot: Robot, server_ip='192.168.1.60', port=9000):
-    def __init__(self, robot: Robot, server_ip='192.168.1.60', port=9000):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.connect((server_ip, port))
         # self.buffer = b''
         self.robot = robot
         print("Connected to the server, ready for commands.")
-
-    # def receive_command(self):
-    #     while b'\n' not in self.buffer:
-    #         data = self.sock.recv(1024)
-    #         if not data:
-    #             return None
-    #         self.buffer += data
-    #     line, self.buffer = self.buffer.split(b'\n', 1)
-    #     return json.loads(line.decode('utf-8'))
 
     def listen(self):
         buffer = ""
@@ -37,8 +27,8 @@ class RobotClient:
     def handle_command(self, command):
         print("Received command:", command)
 
-        com_type = command.get('type')
-        match com_type:
+        cmd_type = command.get('type')
+        match cmd_type:
 
             case 'move_to_q':
                 config = np.array(command['config'])
